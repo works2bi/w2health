@@ -5,7 +5,9 @@ Fundação SaaS V1: além dos metadados/CORS, concentra os parâmetros de segura
 
 * `DATABASE_URL`        — papel de RUNTIME da API (`w2health_app`, sem superusuário, sujeito
                           a Row-Level Security);
-* `DATABASE_ADMIN_URL`  — papel DONO do schema (migrations, seed, jobs de agregação).
+* `DATABASE_ADMIN_URL`  — papel DONO do schema (migrations, seed, CLIs). Os processos de
+                          runtime (API e worker) NÃO usam esta URL: em produção/staging ela
+                          fica fora do ambiente deles e é exigida só por quem a usa.
 
 Segredos nunca têm default no código. Em ambientes de desenvolvimento, a ausência de
 `JWT_SECRET_KEY` gera uma chave efêmera por processo (sessões caem a cada restart) e a
@@ -62,7 +64,8 @@ class Settings(BaseSettings):
     database_url: str = Field(
         default="postgresql+psycopg://w2health:w2health@localhost:5432/w2health"
     )
-    # Papel dono do schema — migrations, seed e jobs. Se ausente, usa `database_url`.
+    # Papel dono do schema — migrations, seed e CLIs. Se ausente: em dev usa `database_url`;
+    # em produção/staging, quem precisar dela falha com erro claro (nunca há fallback).
     database_admin_url: str | None = Field(default=None)
     # Papel de runtime criado/garantido pela migration de RLS.
     app_db_role: str = Field(default="w2health_app")
@@ -116,6 +119,9 @@ class Settings(BaseSettings):
     raw_storage_root: str = Field(default="./var/raw")
     # Diretório da Data Platform (contratos, mappings, regras de qualidade, exemplos).
     data_platform_dir: str | None = Field(default=None)
+    # Limite de corpo das requisições (KB), checado pelo Content-Length ANTES de ler o corpo.
+    # A rota de upload tem limite próprio (upload_max_file_mb × upload_max_files).
+    request_max_body_kb: int = Field(default=1024, ge=16, le=1024 * 1024)
     # Limites do upload controlado (fonte FILE).
     upload_max_file_mb: int = Field(default=50, ge=1, le=1024)
     upload_max_files: int = Field(default=20, ge=1, le=100)
@@ -175,7 +181,11 @@ class Settings(BaseSettings):
 
     @property
     def admin_database_url(self) -> str:
-        return self.database_admin_url or self.database_url
+        if self.database_admin_url:
+            return self.database_admin_url
+        if self.is_production_like:
+            raise RuntimeError("DATABASE_ADMIN_URL necessário para esta operação (papel dono do schema)")
+        return self.database_url
 
     @property
     def is_production_like(self) -> bool:
@@ -223,9 +233,10 @@ class Settings(BaseSettings):
             p.append("RATE_LIMIT_BACKEND deve ser compartilhado (database)")
         if self.log_format != "json":
             p.append("LOG_FORMAT deve ser json")
-        if not self.database_admin_url:
-            p.append("DATABASE_ADMIN_URL ausente (migrations usam papel separado do runtime)")
-        elif self.database_url == self.database_admin_url:
+        # DATABASE_ADMIN_URL não é exigida aqui: API e worker não usam o papel dono, e a
+        # credencial dele não deve estar no ambiente desses processos. Se estiver definida,
+        # precisa ser um papel distinto do runtime.
+        if self.database_admin_url and self.database_url == self.database_admin_url:
             p.append("DATABASE_URL não pode usar o mesmo papel das migrations")
         if not self.database_pipeline_url:
             p.append("DATABASE_PIPELINE_URL ausente (pipeline exige papel próprio)")

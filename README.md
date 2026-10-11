@@ -171,6 +171,9 @@ Fora do container: `cd backend && uv sync && uv run pytest`.
   `python deploy/gen_prod_secrets.py` e
   `docker compose -f docker-compose.production.example.yml up -d --build` —
   ver [docs/PRODUCTION_DEPLOYMENT.md](docs/PRODUCTION_DEPLOYMENT.md).
+* Staging/demonstração em VPS **sem Docker** (frontend estático no nginx, API + worker no
+  PM2, papéis de banco provisionados pelo DBA):
+  `.github/workflows/deploy-staging.yml` — ver [docs/DEPLOY_VPS.md](docs/DEPLOY_VPS.md).
 * Testes em contêiner: `docker compose --profile test run --rm --build backend-test`.
 * CI: `.github/workflows/ci.yml`. Gate de release: [docs/PRODUCTION_RELEASE_CHECKLIST.md](docs/PRODUCTION_RELEASE_CHECKLIST.md).
 * Restauração de um tenant: `python -m app.ops.tenant_backup --help`.

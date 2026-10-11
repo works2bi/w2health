@@ -20,6 +20,9 @@ from collections import defaultdict
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+#: métodos com rótulo próprio; qualquer outro (o cliente escolhe livremente) vira OTHER —
+#: sem isso, métodos arbitrários de clientes não autenticados criariam séries sem limite
+_METODOS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"})
 _BUCKETS = (0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
 _lock = threading.Lock()
 _req_total: dict[tuple[str, str, str], int] = defaultdict(int)
@@ -29,6 +32,7 @@ _lat_sum: dict[tuple[str, str], float] = defaultdict(float)
 
 def observe_http(method: str, route: str, status: int, seconds: float) -> None:
     classe = f"{status // 100}xx"
+    method = method if method in _METODOS else "OTHER"
     with _lock:
         _req_total[(method, route, classe)] += 1
         b = _lat_buckets[(method, route)]

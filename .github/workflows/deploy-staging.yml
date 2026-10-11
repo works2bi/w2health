@@ -1,0 +1,91 @@
+# Deploy de staging/demonstração na VPS — mesmo modelo dos outros apps (build no runner →
+# rsync via SSH → PM2), sem Docker: frontend estático (nginx) e backend Python (API + worker).
+# Passos manuais (banco, .env, nginx): docs/DEPLOY_VPS.md.
+#
+# GitHub (iguais aos outros repos): secret SSH_PRIVATE_KEY; vars SSH_HOST, SSH_USER.
+name: Deploy Staging
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      APP_BASE_DIR: /srv/apps/w2data_w2health/staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend (export estático)
+        working-directory: frontend
+        env:
+          NEXT_OUTPUT: export
+          NEXT_PUBLIC_API_BASE_URL: /api
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          for r in beneficiarios contratos prestadores admin/tenants; do test -f "out/$r/_/index.html"; done
+
+      - name: Setup uv (Python 3.12)
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build backend (código + lock de produção com hashes)
+        run: |
+          set -euo pipefail
+          mkdir -p dist/backend
+          (cd backend && uv export --frozen --no-dev --no-emit-project --format requirements-txt \
+             -o ../dist/backend/requirements.lock.txt)
+          cp -r backend/app backend/alembic backend/alembic.ini dist/backend/
+          cp -r data_platform dist/backend/data_platform
+          cp deploy/ecosystem.staging.config.js dist/backend/
+          find dist/backend -name __pycache__ -type d -prune -exec rm -rf {} +
+
+      - name: Deploy frontend/backend artifacts to VPS
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ vars.SSH_HOST }}
+          SSH_USER: ${{ vars.SSH_USER }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          SSH="ssh -i $HOME/.ssh/id_rsa"
+
+          $SSH "$SSH_USER@$SSH_HOST" "mkdir -p '$APP_BASE_DIR/frontend' '$APP_BASE_DIR/backend'"
+
+          rsync -az --delete -e "$SSH" frontend/out/ "$SSH_USER@$SSH_HOST:$APP_BASE_DIR/frontend/"
+          rsync -az --delete \
+            --exclude ".env" \
+            --exclude ".env.migrate" \
+            --exclude ".venv" \
+            --exclude "__pycache__" \
+            -e "$SSH" dist/backend/ "$SSH_USER@$SSH_HOST:$APP_BASE_DIR/backend/"
+
+          { printf 'export APP_BASE_DIR=%q\n' "$APP_BASE_DIR"; cat deploy/remote_deploy_staging.sh; } \
+            | $SSH "$SSH_USER@$SSH_HOST" 'bash -s'

@@ -335,6 +335,21 @@ def test_producao_fail_closed_sem_fallback_inseguro(campo, valor, trecho):
     assert any(trecho in p for p in problemas), problemas
 
 
+def test_runtime_sobe_sem_credencial_do_papel_dono():
+    """API/worker não usam o papel dono: a credencial dele fica fora do ambiente deles."""
+    s = _prod(database_admin_url=None)
+    assert s.validate_for_runtime() == []
+    # quem precisa do papel dono (migrations/CLIs) falha explicitamente — sem fallback
+    with pytest.raises(RuntimeError, match="DATABASE_ADMIN_URL"):
+        _ = s.admin_database_url
+
+
+def test_dev_sem_url_do_dono_usa_a_de_runtime():
+    s = Settings(_env_file=None, environment="development", database_admin_url=None,
+                 database_url="postgresql+psycopg://a:b@db:5432/x")
+    assert s.admin_database_url == "postgresql+psycopg://a:b@db:5432/x"
+
+
 def test_ambiente_desconhecido_nao_sobe():
     with pytest.raises(ValueError):
         Settings(_env_file=None, environment="prod")

@@ -16,6 +16,7 @@ Aditiva e não destrutiva a partir de `e8b9c0d1f2a3`:
 6. Control plane: `tenant_onboarding` (backfill), `user_recovery_codes`, `auth_rate_limits`.
 7. Papel `w2health_pipeline` (NOSUPERUSER, NOBYPASSRLS, sem DDL; senha em
    `PIPELINE_DB_PASSWORD`, sem ela NOLOGIN) + grants mínimos; grants novos do runtime.
+   Com `DB_ROLES_PROVISIONED=true` o papel é criado pelo DBA e aqui só é verificado.
 
 Revision ID: f4c5d6e7a8b9
 Revises: e8b9c0d1f2a3
@@ -57,7 +58,30 @@ def _role(env: str, default: str) -> str:
     return r
 
 
+def _papeis_provisionados() -> bool:
+    """`DB_ROLES_PROVISIONED=true`: o DBA cria os papéis; a migration só os verifica.
+
+    Assim o dono do schema não precisa de SUPERUSER/CREATEROLE no cluster e nenhuma senha
+    aparece em DDL (que pode ir para o log do servidor).
+    """
+    return os.environ.get("DB_ROLES_PROVISIONED", "").strip().lower() in ("1", "true", "yes")
+
+
+def _verificar_papel(role: str) -> None:
+    linha = op.get_bind().exec_driver_sql(
+        "SELECT rolsuper, rolbypassrls, rolcreaterole, rolcreatedb FROM pg_roles "
+        f"WHERE rolname = '{role}'"
+    ).first()
+    if linha is None:
+        raise RuntimeError(f"papel {role} não existe (DB_ROLES_PROVISIONED=true: crie-o antes da migration)")
+    if any(linha):
+        raise RuntimeError(f"papel {role} não pode ter SUPERUSER, BYPASSRLS, CREATEROLE nem CREATEDB")
+
+
 def _ensure_role(role: str, password: str) -> None:
+    if _papeis_provisionados():
+        _verificar_papel(role)
+        return
     attrs = "NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT"
     login = "LOGIN PASSWORD '" + password.replace("'", "''") + "'" if password else "NOLOGIN"
     existe = op.get_bind().exec_driver_sql(f"SELECT 1 FROM pg_roles WHERE rolname = '{role}'").first()

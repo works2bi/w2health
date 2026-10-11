@@ -13,6 +13,7 @@ administração. Camadas transversais registradas aqui:
 Fase 3: Trusted Hosts, HSTS/CSP na API, IP real só via proxy confiável (uvicorn
 `--proxy-headers --forwarded-allow-ips`), log de acesso estruturado com `duration_ms`,
 métricas (`/metrics`) e health de liveness/readiness (`/health/live`, `/health/ready`).
+Limite de corpo e token no upload checados antes de ler o corpo (`app/security/body_limit.py`).
 """
 
 import hmac
@@ -35,6 +36,7 @@ from app.core.config import get_settings
 from app.core.logging import clear_log_context, configure_logging, set_log_context
 from app.core.tenant import TenantContextMissing
 from app.saas.audit import RequestMeta, set_request_meta
+from app.security.body_limit import BodyLimitMiddleware
 from app.security.errors import ApiError
 
 settings = get_settings()
@@ -134,6 +136,10 @@ def create_app() -> FastAPI:
         redoc_url=None if settings.is_production_like else "/redoc",
         openapi_url=None if settings.is_production_like else "/openapi.json",
     )
+
+    # mais interno: recusa corpo grande / upload sem token antes de ler o corpo; a resposta
+    # ainda passa pelo request_context (request id, headers de segurança, métricas)
+    app.add_middleware(BodyLimitMiddleware)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):

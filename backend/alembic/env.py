@@ -2,6 +2,8 @@
 
 Migrations sempre rodam com `DATABASE_ADMIN_URL` (dono das tabelas, cria papéis/políticas
 de RLS). A API roda com `DATABASE_URL` (papel `w2health_app`, sem privilégio de DDL).
+Com `DB_ROLES_PROVISIONED=true` os papéis de runtime são criados pelo DBA e as migrations
+só os verificam — o dono pode ser um papel comum, sem SUPERUSER/CREATEROLE (docs/DEPLOY_VPS.md).
 """
 
 from logging.config import fileConfig

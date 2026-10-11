@@ -4,7 +4,8 @@ Defesa em profundidade (ver app/db/rls.py e docs/SECURITY_AND_TENANT_ISOLATION.m
 
 1. papel `w2health_app` (ou APP_DB_ROLE): NOSUPERUSER, NOBYPASSRLS, sem DDL. Senha vem de
    `APP_DB_PASSWORD`; sem ela o papel é criado NOLOGIN (operador define a senha depois).
-   Papéis são do CLUSTER — o downgrade revoga grants mas NÃO remove o papel;
+   Papéis são do CLUSTER — o downgrade revoga grants mas NÃO remove o papel.
+   Com `DB_ROLES_PROVISIONED=true` o papel é criado pelo DBA e aqui só é verificado;
 2. grants mínimos: SELECT no data plane (escrita só em `regras_alerta`); CRUD no control
    plane; `audit_logs` somente SELECT/INSERT (trilha imutável para a aplicação);
 3. RLS ENABLE + FORCE em todas as 24 tabelas com `tenant_id`, política `tenant_isolation`
@@ -51,6 +52,26 @@ def _role() -> str:
     return role
 
 
+def _papeis_provisionados() -> bool:
+    """`DB_ROLES_PROVISIONED=true`: o DBA cria os papéis; a migration só os verifica.
+
+    Assim o dono do schema não precisa de SUPERUSER/CREATEROLE no cluster e nenhuma senha
+    aparece em DDL (que pode ir para o log do servidor).
+    """
+    return os.environ.get("DB_ROLES_PROVISIONED", "").strip().lower() in ("1", "true", "yes")
+
+
+def _verificar_papel(role: str) -> None:
+    linha = op.get_bind().exec_driver_sql(
+        "SELECT rolsuper, rolbypassrls, rolcreaterole, rolcreatedb FROM pg_roles "
+        f"WHERE rolname = '{role}'"
+    ).first()
+    if linha is None:
+        raise RuntimeError(f"papel {role} não existe (DB_ROLES_PROVISIONED=true: crie-o antes da migration)")
+    if any(linha):
+        raise RuntimeError(f"papel {role} não pode ter SUPERUSER, BYPASSRLS, CREATEROLE nem CREATEDB")
+
+
 def upgrade() -> None:
     role = _role()
     senha = os.environ.get("APP_DB_PASSWORD") or ""
@@ -58,7 +79,9 @@ def upgrade() -> None:
     login = "LOGIN PASSWORD '" + senha.replace("'", "''") + "'" if senha else "NOLOGIN"
     conn = op.get_bind()
     existe = conn.exec_driver_sql(f"SELECT 1 FROM pg_roles WHERE rolname = '{role}'").first()
-    if existe:
+    if _papeis_provisionados():
+        _verificar_papel(role)
+    elif existe:
         op.execute(f"ALTER ROLE {role} {attrs}")
         if senha:
             op.execute(f"ALTER ROLE {role} {login}")

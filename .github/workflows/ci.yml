@@ -54,6 +54,26 @@ jobs:
         run: |
           uv run alembic downgrade -1
           uv run alembic upgrade head
+      - name: Migrations com dono sem privilégio e papéis provisionados (deploy VPS, docs/DEPLOY_VPS.md)
+        env:
+          PGPASSWORD: ci-only-not-a-secret
+        run: |
+          psql() { command psql -h 127.0.0.1 -U w2health -d w2health -v ON_ERROR_STOP=1 "$@"; }
+          for r in vps_owner vps_app vps_pipeline; do
+            psql -c "CREATE ROLE $r LOGIN PASSWORD 'ci-$r' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS"
+          done
+          psql -c "CREATE DATABASE w2health_vps OWNER vps_owner"
+          psql -c "CREATE DATABASE w2health_vps_neg OWNER vps_owner"
+          unset APP_DB_PASSWORD PIPELINE_DB_PASSWORD
+          export DB_ROLES_PROVISIONED=true APP_DB_ROLE=vps_app PIPELINE_DB_ROLE=vps_pipeline
+          DATABASE_ADMIN_URL=postgresql+psycopg://vps_owner:ci-vps_owner@127.0.0.1:5432/w2health_vps             uv run alembic upgrade head
+          DATABASE_ADMIN_URL=postgresql+psycopg://vps_owner:ci-vps_owner@127.0.0.1:5432/w2health_vps             uv run python -m app.saas.cli sync-catalog
+          # papel de runtime com BYPASSRLS: a migration recusa
+          psql -c "ALTER ROLE vps_app BYPASSRLS"
+          if DATABASE_ADMIN_URL=postgresql+psycopg://vps_owner:ci-vps_owner@127.0.0.1:5432/w2health_vps_neg               uv run alembic upgrade head; then
+            echo "migration deveria recusar papel com BYPASSRLS"; exit 1
+          fi
+          psql -c "ALTER ROLE vps_app NOBYPASSRLS"
       - name: Testes (inclui segurança, isolamento, worker, object storage local)
         run: uv run pytest -q -p no:cacheprovider
       - name: Vulnerabilidades conhecidas (dependências travadas)
@@ -79,6 +99,13 @@ jobs:
         run: npm run lint
       - name: Build
         run: npm run build
+      - name: Build estático (deploy VPS — nginx, sem Node em runtime)
+        env:
+          NEXT_OUTPUT: export
+          NEXT_PUBLIC_API_BASE_URL: /api
+        run: |
+          npm run build
+          for r in beneficiarios contratos prestadores admin/tenants; do test -f "out/$r/_/index.html"; done
       - name: Vulnerabilidades — dependências de produção (bloqueante)
         run: npm audit --omit=dev --audit-level=low
       - name: Vulnerabilidades — ferramentas de build (informativo; ver docs/DEPENDENCY_SECURITY.md)
