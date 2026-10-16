@@ -33,7 +33,11 @@ Fonte de verdade: `backend/app/models/`. Migrations: `backend/alembic/versions/`
 em internação/cirurgia/OPME)
 
 ### `contratos`
-`id`, `id_plano→planos`, `nome`, `tipo` (PF|PME|Empresarial)
+`id`, `codigo`, `nome`, `tipo` (PF|PME|Empresarial). Sem plano — ver `planos_contratos`.
+
+### `planos_contratos`
+PK (`tenant_id`, `id_contrato→contratos`, `id_plano→planos`). Contrato × plano é N:N: 1 linha
+por plano oferecido pelo contrato.
 
 ### `especialidades`
 `id`, `codigo` (único), `nome`, `grupo` (clinica|cirurgica|diagnostico|terapia)
@@ -59,7 +63,8 @@ consultorio), `id_regiao→regioes`, `id_especialidade_principal→especialidade
 ### `beneficiarios`
 `id`, `codigo` (`BEN-000001`, único), `sexo` (M|F), `data_nascimento`, `faixa_etaria`,
 `id_regiao`, `id_plano`, `id_contrato`, `data_adesao`, `data_saida` (nullable), `status`
-(ativo|inativo)
+(ativo|inativo). FK composta (`tenant_id`, `id_contrato`, `id_plano`) → `planos_contratos`:
+o plano da vida tem de ser um plano do contrato dela.
 
 ### `receitas`  — grão: competência × plano
 `id`, `competencia`, `id_plano→planos`, `quantidade_beneficiarios`,

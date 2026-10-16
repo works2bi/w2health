@@ -1,0 +1,48 @@
+entity: plano_contrato
+version: 1
+grain: "1 linha por plano oferecido por um contrato (contrato × plano é N:N)"
+primary_key: [tenant_id, id_contrato, id_plano]
+business_keys:
+  - [tenant_id, contrato_codigo, plano_codigo]
+load_strategy: UPSERT
+watermark_column: source_updated_at
+updated_at_column: source_updated_at
+deduplication_strategy: "business_key"
+fields:
+  - name: tenant_id
+    type: string
+    nullable: false
+    required_for: [ALL]
+    classification: internal
+    description: "Cliente."
+    example: "operadora-alfa"
+    typical_source: "constante"
+    transformation: "literal"
+    quality_rules: [tenant_id_ausente]
+  - name: id_contrato
+    type: bigint
+    nullable: false
+    required_for: [contract]
+    classification: internal
+    description: "FK para contrato. Parte da chave."
+    example: 45
+    typical_source: "cadastro comercial / contratos"
+    transformation: "lookup contrato.codigo -> id_contrato"
+    quality_rules: []
+  - name: id_plano
+    type: bigint
+    nullable: false
+    required_for: [contract]
+    classification: internal
+    description: "FK para plano. Parte da chave."
+    example: 12
+    typical_source: "cadastro comercial / contratos"
+    transformation: "lookup plano.codigo -> id_plano"
+    quality_rules: []
+metadata_fields: [tenant_id, source_system, source_entity, source_record_id, ingestion_id,
+                  ingestion_timestamp, source_updated_at, reference_date, raw_payload_hash]
+notes: >
+  Um contrato oferece N planos e um plano é vendido em N contratos. O beneficiário aponta
+  para o par (contrato, plano) em que está — só pode estar num plano do próprio contrato.
+  Par ausente numa carga não é removido (beneficiários podem apontar para ele). Preço por
+  par (tabela de preço × grupo/faixa etária) é outra entidade, fora da v1.

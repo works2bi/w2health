@@ -23,7 +23,7 @@ SENSIBILIDADE = {
 }
 
 ORDEM = [
-    "tenant", "competencia", "beneficiario", "plano", "contrato", "prestador",
+    "tenant", "competencia", "beneficiario", "plano", "contrato", "plano_contrato", "prestador",
     "especialidade", "procedimento", "evento_assistencial", "receita",
     "receita_contrato", "glosa", "coparticipacao",
 ]

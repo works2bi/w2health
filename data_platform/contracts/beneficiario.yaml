@@ -65,11 +65,11 @@ fields:
     nullable: false
     required_for: [loss_ratio, contract]
     classification: internal
-    description: "FK para plano."
+    description: "Plano em que a vida está. Tem de ser um dos planos do contrato do beneficiário (FK composta (tenant_id, id_contrato, id_plano) -> plano_contrato)."
     example: 12
     typical_source: "cadastro"
     transformation: "lookup plano.codigo -> id_plano"
-    quality_rules: []
+    quality_rules: [plano_fora_do_contrato]
   - name: id_contrato
     type: bigint
     nullable: true
@@ -79,7 +79,7 @@ fields:
     example: 45
     typical_source: "cadastro comercial"
     transformation: "lookup contrato.codigo -> id_contrato"
-    quality_rules: [contrato_inexistente]
+    quality_rules: [contrato_inexistente, plano_fora_do_contrato]
   - name: data_adesao
     type: date
     nullable: false

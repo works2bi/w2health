@@ -54,8 +54,8 @@ def test_mapping_generico_do_repositorio_e_valido():
     m = load_mapping_file(GENERIC)
     assert m.ref == "generic_operator@v1"
     assert {e.target_entity for e in m.entities} == {
-        "especialidade", "plano", "contrato", "prestador", "procedimento", "beneficiario",
-        "receita", "evento_assistencial"}
+        "especialidade", "plano", "contrato", "plano_contrato", "prestador", "procedimento",
+        "beneficiario", "receita", "evento_assistencial"}
     assert m.max_rejected_ratio == 0.0 and m.financial_tolerance_abs == Decimal("0")
 
 

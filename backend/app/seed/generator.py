@@ -27,6 +27,7 @@ from app.models import (
     Especialidade,
     EventoAssistencial,
     Plano,
+    PlanoContrato,
     Prestador,
     Procedimento,
     Receita,
@@ -124,21 +125,28 @@ def load_catalogos(session: Session, cfg: SeedConfig, rng: np.random.Generator) 
         dtype=float,
     )
 
-    # Contratos (v1.2 — vários por plano, tamanhos distintos)
+    # Contratos (v1.2 — vários por plano, tamanhos distintos). Contrato × plano é N:N
+    # (`planos_contratos`); o catálogo sintético usa 1 plano por contrato.
     contrato_por_plano: dict[int, list[int]] = {pid: [] for pid in plano_ids}
     contrato_pesos_por_plano: dict[int, list[float]] = {pid: [] for pid in plano_ids}
     contratos = []
-    for n_ctr, (cod, nome, tipo, vidas_alvo) in enumerate(CONTRATOS, start=1):
+    for n_ctr, (_cod, nome, tipo, vidas_alvo) in enumerate(CONTRATOS, start=1):
         c = Contrato(
-            tenant_id=tid, codigo=f"CTR-{n_ctr:04d}", id_plano=plano_id_by_cod[cod], nome=nome,
-            tipo=tipo, vidas_alvo=int(vidas_alvo),
+            tenant_id=tid, codigo=f"CTR-{n_ctr:04d}", nome=nome, tipo=tipo,
+            vidas_alvo=int(vidas_alvo),
         )
         contratos.append(c)
     session.add_all(contratos)
     session.flush()
-    for c in contratos:
-        contrato_por_plano[c.id_plano].append(c.id)
-        contrato_pesos_por_plano[c.id_plano].append(float(max(c.vidas_alvo, 1)))
+    session.add_all([
+        PlanoContrato(tenant_id=tid, id_contrato=c.id, id_plano=plano_id_by_cod[cod])
+        for c, (cod, _n, _t, _v) in zip(contratos, CONTRATOS, strict=True)
+    ])
+    session.flush()
+    for c, (cod, _n, _t, _v) in zip(contratos, CONTRATOS, strict=True):
+        pid = plano_id_by_cod[cod]
+        contrato_por_plano[pid].append(c.id)
+        contrato_pesos_por_plano[pid].append(float(max(c.vidas_alvo, 1)))
     contrato_pesos_np = {
         pid: (np.array(w, dtype=float) / sum(w)) if w else np.array([], dtype=float)
         for pid, w in contrato_pesos_por_plano.items()
@@ -727,7 +735,7 @@ def wipe_dados(session: Session, tenant_id: str) -> None:
     for model in (
         AggCompetenciaDimensao, AggPrestadorCompetencia, AggBeneficiarioCompetencia,
         AggContratoCompetencia, AggSinistralidadeCompetencia, ReceitaContrato,
-        EventoAssistencial, Receita, Beneficiario,
+        EventoAssistencial, Receita, Beneficiario, PlanoContrato,
         Prestador, Procedimento, Diagnostico, Especialidade, Contrato, Plano,
         Regiao, CenarioGabarito, SeedManifest,
     ):

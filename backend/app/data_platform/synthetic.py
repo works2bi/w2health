@@ -23,6 +23,7 @@ from app.models import (
     IngestionRun,
     PipelineRun,
     Plano,
+    PlanoContrato,
     Prestador,
     Procedimento,
     Regiao,
@@ -57,7 +58,8 @@ def finish(session: Session, tenant_id: str, lineage: dict, *, counts: dict, eve
            competencia_inicio, competencia_fim) -> None:
     session.info.pop("w2h_lineage", None)
     # catálogos inseridos via ORM recebem a linhagem aqui (os fatos já vieram no COPY)
-    for model in (Regiao, Plano, Contrato, Especialidade, Procedimento, Prestador, Diagnostico):
+    for model in (Regiao, Plano, Contrato, PlanoContrato, Especialidade, Procedimento, Prestador,
+                  Diagnostico):
         session.execute(update(model).where(model.tenant_id == tenant_id, model.source_system.is_(None))
                         .values(**lineage))
     agora = datetime.now(UTC)

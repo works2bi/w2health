@@ -99,13 +99,18 @@ def gerar(out: Path, n_benef: int, seed: int, inicio: date, n_meses: int, com_re
                                    ESPECIALIDADES)
     contagem["planos"] = w("planos", ["cod_plano", "nome_plano", "segmentacao", "coparticipacao",
                                       "perc_coparticipacao"], [p[:5] for p in PLANOS])
-    contratos = []
+    # contrato × plano é N:N: os contratos empresariais oferecem também o plano superior
+    contratos, planos_contrato = [], {}
     for i in range(1, 11):
         plano = PLANOS[(i - 1) % len(PLANOS)][0]
         tipo = "PF" if plano in ("PL-ESSENCIAL",) else ("Empresarial" if plano == "PL-EMPRESA" else "PME")
-        contratos.append((f"CT-{i:03d}", f"Contrato {i:03d}", plano, tipo))
-    contagem["contratos"] = w("contratos", ["cod_contrato", "descricao_contrato", "cod_plano", "tipo_contrato"],
+        cod = f"CT-{i:03d}"
+        contratos.append((cod, f"Contrato {i:03d}", tipo))
+        planos_contrato[cod] = [plano, "PL-SUPERIOR"] if plano == "PL-EMPRESA" else [plano]
+    contagem["contratos"] = w("contratos", ["cod_contrato", "descricao_contrato", "tipo_contrato"],
                               contratos)
+    contagem["plano_contratos"] = w("plano_contratos", ["cod_contrato", "cod_plano"],
+                                    [(c, p) for c, ps in planos_contrato.items() for p in ps])
     prestadores = []
     esp_cods = [e[0] for e in ESPECIALIDADES]
     for i in range(1, 31):
@@ -124,6 +129,8 @@ def gerar(out: Path, n_benef: int, seed: int, inicio: date, n_meses: int, com_re
         idade = max(0, min(90, int(rnd.gauss(38, 19))))
         nasc = date(inicio.year - idade, rnd.randint(1, 12), rnd.randint(1, 28))
         ct = contratos[rnd.randrange(len(contratos))]
+        opcoes = planos_contrato[ct[0]]
+        plano = opcoes[i % len(opcoes)]  # determinístico — não consome o rnd
         cidade, uf, _ = rnd.choices(CIDADES, weights=[c[2] for c in CIDADES])[0]
         adesao = inicio - timedelta(days=rnd.randint(30, 2500)) if rnd.random() < 0.85 else \
             comps[rnd.randrange(len(comps))] + timedelta(days=rnd.randint(0, 20))
@@ -133,7 +140,7 @@ def gerar(out: Path, n_benef: int, seed: int, inicio: date, n_meses: int, com_re
             if saida <= adesao:
                 saida = None
         benef.append({"cod": f"BEN-{i:06d}", "sexo": rnd.choice(["Feminino", "Masculino"]), "nasc": nasc,
-                      "plano": ct[2], "contrato": ct[0], "cidade": cidade, "uf": uf,
+                      "plano": plano, "contrato": ct[0], "cidade": cidade, "uf": uf,
                       "adesao": adesao, "saida": saida, "idade": idade})
     contagem["beneficiarios"] = w(
         "beneficiarios", ["matricula", "sexo", "dt_nascimento", "cod_plano", "cod_contrato", "municipio",

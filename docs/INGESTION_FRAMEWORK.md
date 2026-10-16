@@ -53,6 +53,7 @@ Disponível**. Um arquivo que só chegou mostra "Recebido", nunca "sucesso".
 |---|---|
 | Reenvio do **mesmo** pacote | checksum igual a uma ingestão `AVAILABLE` → nova ingestão `SUCCESS` com `duplicate_of`; nada é regravado |
 | Dimensões (especialidade, plano, contrato, prestador, procedimento, beneficiário) | UPSERT por `(tenant_id, codigo)`; ausência no arquivo **não** apaga (não se infere exclusão) |
+| `plano_contrato` (N:N) | UPSERT por `(tenant_id, contrato, plano)`; par ausente no arquivo **não** é removido |
 | Fatos (`evento_assistencial`, `receita`) | `COMPETENCIA_SNAPSHOT`: as competências presentes no pacote são substituídas — eventos, apenas os da **mesma** fonte; um registro removido na origem some ao reprocessar a competência |
 | Chave repetida dentro do arquivo | WARNING `evento_duplicado`/`chave_duplicada`; mantém a última ocorrência |
 | Carga reprovada | nada publicado; o estado anterior do tenant fica intacto |

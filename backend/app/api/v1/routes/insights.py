@@ -93,9 +93,11 @@ def meta_transparencia(ctx: TenantContext = Depends(get_tenant_context),
 _CATALOGOS: dict[str, tuple[str, str | None]] = {
     "planos": ("SELECT id, nome FROM planos WHERE tenant_id = :t ORDER BY nome", None),
     "contratos": (
-        "SELECT ct.id, ct.nome || ' (' || pl.nome || ')' AS nome FROM contratos ct "
-        "JOIN planos pl ON pl.id = ct.id_plano AND pl.tenant_id = ct.tenant_id "
-        "WHERE ct.tenant_id = :t ORDER BY ct.nome", CONTRACT),
+        "SELECT ct.id, ct.nome || ' (' || string_agg(pl.nome, ', ' ORDER BY pl.nome) || ')' AS nome "
+        "FROM contratos ct "
+        "JOIN planos_contratos pc ON pc.id_contrato = ct.id AND pc.tenant_id = ct.tenant_id "
+        "JOIN planos pl ON pl.id = pc.id_plano AND pl.tenant_id = pc.tenant_id "
+        "WHERE ct.tenant_id = :t GROUP BY ct.id, ct.nome ORDER BY ct.nome", CONTRACT),
     "regioes": ("SELECT id, cidade || '/' || uf AS nome FROM regioes WHERE tenant_id = :t ORDER BY nome", None),
     "especialidades": ("SELECT id, nome FROM especialidades WHERE tenant_id = :t ORDER BY nome", None),
     "grupos-despesa": (

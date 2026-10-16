@@ -51,9 +51,16 @@ entities:
     required: true
     fields:
       codigo: {source: cod_contrato, normalize: [strip, upper]}
-      plano_codigo: {source: cod_plano, normalize: [strip, upper]}
       nome: {source: descricao_contrato, normalize: [collapse_spaces]}
       tipo: {source: tipo_contrato, normalize: [strip]}
+
+  # contrato × plano é N:N — 1 linha por plano que o contrato oferece
+  - source_entity: plano_contratos
+    target_entity: plano_contrato
+    required: true
+    fields:
+      contrato_codigo: {source: cod_contrato, normalize: [strip, upper]}
+      plano_codigo: {source: cod_plano, normalize: [strip, upper]}
 
   - source_entity: prestadores
     target_entity: prestador

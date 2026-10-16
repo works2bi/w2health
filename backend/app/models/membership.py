@@ -8,7 +8,16 @@ negócio passam a ser `(tenant_id, codigo)` e `(tenant_id, competencia, id_plano
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, ForeignKey, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Date,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -31,6 +40,13 @@ class Beneficiario(TenantMixin, LineageMixin, Base):
     __tablename__ = "beneficiarios"
     __table_args__ = (
         UniqueConstraint("tenant_id", "codigo", name="uq_beneficiarios_tenant_codigo"),
+        # o plano do beneficiário tem de ser um dos planos do contrato dele
+        ForeignKeyConstraint(
+            ["tenant_id", "id_contrato", "id_plano"],
+            ["planos_contratos.tenant_id", "planos_contratos.id_contrato",
+             "planos_contratos.id_plano"],
+            name="fk_beneficiarios_plano_contrato",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

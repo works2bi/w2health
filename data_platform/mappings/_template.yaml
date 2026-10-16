@@ -8,7 +8,7 @@
 
 source_system: "<rótulo livre — ex.: erp_faturamento, assistencial_a, arquivos_tiss>"
 source_entity: "<nome da entidade/tabela/arquivo na origem>"
-target_entity: "<uma de: beneficiario | plano | contrato | prestador | especialidade |"
+target_entity: "<uma de: beneficiario | plano | contrato | plano_contrato | prestador | especialidade |"
 target_entity_options: "  procedimento | evento_assistencial | receita | receita_contrato>"
 
 load:

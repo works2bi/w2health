@@ -56,9 +56,13 @@ ENTITIES: dict[str, CanonEntity] = {
            description="fração 0–1 aplicada sobre valor_pago (informativo nesta fase)"),
     ), ("codigo",)),
     "contrato": CanonEntity("contrato", (
-        _f("codigo", "string", True), _f("plano_codigo", "string", True),
+        _f("codigo", "string", True),
         _f("nome", "string", False), _f("tipo", "string", False),
     ), ("codigo",)),
+    # contrato × plano é N:N — 1 linha por plano oferecido pelo contrato
+    "plano_contrato": CanonEntity("plano_contrato", (
+        _f("contrato_codigo", "string", True), _f("plano_codigo", "string", True),
+    ), ("contrato_codigo", "plano_codigo")),
     "prestador": CanonEntity("prestador", (
         _f("codigo", "string", True), _f("nome", "string", True),
         _f("tipo_prestador", "string", False),
@@ -75,7 +79,9 @@ ENTITIES: dict[str, CanonEntity] = {
     "beneficiario": CanonEntity("beneficiario", (
         _f("codigo", "string", True, description="identificador pseudonimizado"),
         _f("data_nascimento", "date", True), _f("sexo", "string", False, SEXO),
-        _f("plano_codigo", "string", True), _f("contrato_codigo", "string", True),
+        _f("plano_codigo", "string", True,
+           description="plano do beneficiário — tem de ser um dos planos do contrato"),
+        _f("contrato_codigo", "string", True),
         _f("cidade", "string", True), _f("uf", "string", True),
         _f("data_adesao", "date", True), _f("data_saida", "date", False),
     ), ("codigo",)),
@@ -103,8 +109,8 @@ ENTITIES: dict[str, CanonEntity] = {
 }
 
 #: ordem de carga (dependências — docs/INTEGRATION_GUIDE.md §5)
-LOAD_ORDER = ("especialidade", "plano", "contrato", "prestador", "procedimento",
-              "beneficiario", "receita", "evento_assistencial")
+LOAD_ORDER = ("especialidade", "plano", "contrato", "plano_contrato", "prestador",
+              "procedimento", "beneficiario", "receita", "evento_assistencial")
 
 #: Macrorregião por UF (divisão regional oficial do IBGE) — derivação factual da região.
 MACRORREGIAO_UF = {

@@ -46,13 +46,28 @@ class Contrato(TenantMixin, LineageMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     # chave de negócio (contrato canônico) — Fase 2
     codigo: Mapped[str] = mapped_column(String(40))
-    id_plano: Mapped[int] = mapped_column(ForeignKey("planos.id"), index=True)
+    # sem plano aqui: um contrato oferece N planos (`PlanoContrato`)
     nome: Mapped[str] = mapped_column(String(80))
     tipo: Mapped[str | None] = mapped_column(String(20), nullable=True)  # PF | PME | Empresarial
     # Bucket de tamanho-alvo da massa sintética (~vidas). Só orienta a geração; um
     # cliente real não precisa fornecer isto (nulo para fontes externas). v1.2.
     vidas_alvo: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
 
+
+class PlanoContrato(TenantMixin, LineageMixin, Base):
+    """Planos oferecidos por um contrato (N:N). Chave: `(tenant_id, id_contrato, id_plano)`.
+
+    O beneficiário aponta para o par exato (FK composta em `beneficiarios`), então ele só
+    pode estar num plano que o contrato dele oferece. Preço (tabela/faixa etária por par)
+    é outra entidade — fora da v1."""
+
+    __tablename__ = "planos_contratos"
+
+    tenant_id: Mapped[str] = mapped_column(String(40), primary_key=True, index=True)
+    id_contrato: Mapped[int] = mapped_column(ForeignKey("contratos.id"), primary_key=True)
+    id_plano: Mapped[int] = mapped_column(ForeignKey("planos.id"), primary_key=True, index=True)
+
+    contrato: Mapped[Contrato] = relationship()
     plano: Mapped[Plano] = relationship()
 
 

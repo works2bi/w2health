@@ -22,11 +22,20 @@ COMP = date(2026, 9, 1)
 
 def test_varios_contratos_por_plano(db):
     linhas = db.execute(
-        text("SELECT id_plano, COUNT(*) AS n FROM contratos GROUP BY id_plano")
+        text("SELECT id_plano, COUNT(*) AS n FROM planos_contratos GROUP BY id_plano")
     ).mappings().all()
     assert len(linhas) >= 10
     assert min(r["n"] for r in linhas) >= 2, "todo plano deve ter ≥ 2 contratos (v1.2)"
     assert db.execute(text("SELECT COUNT(*) FROM contratos")).scalar_one() >= 40
+
+
+def test_plano_do_beneficiario_e_um_plano_do_contrato(db):
+    """Contrato × plano é N:N; o beneficiário só pode estar num plano do contrato dele."""
+    orfaos = db.execute(text(
+        "SELECT COUNT(*) FROM beneficiarios b LEFT JOIN planos_contratos pc "
+        "ON pc.tenant_id = b.tenant_id AND pc.id_contrato = b.id_contrato AND pc.id_plano = b.id_plano "
+        "WHERE pc.id_contrato IS NULL")).scalar_one()
+    assert orfaos == 0
 
 
 def test_listar_contratos_shape(db):

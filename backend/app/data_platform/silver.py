@@ -5,6 +5,8 @@ Regras de carga (docs/INGESTION_FRAMEWORK.md §Idempotência):
 * dimensões (especialidade, plano, contrato, prestador, procedimento, beneficiário):
   UPSERT pela chave de negócio `(tenant_id, codigo)` — atualiza atributos e linhagem;
   ausência de um registro no arquivo NÃO apaga nada (não se infere exclusão);
+* plano_contrato (N:N): UPSERT pelo par `(tenant_id, contrato, plano)` — mesma regra:
+  par ausente no arquivo não é removido (beneficiários podem apontar para ele);
 * fatos por competência (receita, evento): SNAPSHOT — as competências presentes no
   arquivo são substituídas (eventos: só os da MESMA fonte); registro removido da origem
   some no reprocessamento daquela competência; reenviar o mesmo arquivo não duplica.
@@ -33,6 +35,7 @@ from app.models import (
     Especialidade,
     EventoAssistencial,
     Plano,
+    PlanoContrato,
     Prestador,
     Procedimento,
     Receita,
@@ -67,6 +70,11 @@ def existing_codes(session: Session, tenant_id: str) -> dict[str, set]:
                        ("prestador", Prestador), ("procedimento", Procedimento),
                        ("beneficiario", Beneficiario)):
         out[ent] = set(session.execute(select(model.codigo).where(model.tenant_id == tenant_id)).scalars())
+    out["plano_contrato"] = set(session.execute(
+        select(Contrato.codigo, Plano.codigo)
+        .join(PlanoContrato, PlanoContrato.id_contrato == Contrato.id)
+        .join(Plano, Plano.id == PlanoContrato.id_plano)
+        .where(PlanoContrato.tenant_id == tenant_id)).tuples())
     return out
 
 
@@ -159,12 +167,29 @@ class SilverLoader:
             ["nome", "segmentacao", "tem_coparticipacao", "percentual_coparticipacao"])
 
     def contratos(self, rows: list[dict]) -> None:
-        planos = self.ids("plano")
         self._upsert(Contrato, "contrato", [
-            {**self._base(r["codigo"]), "codigo": r["codigo"], "id_plano": planos[r["plano_codigo"]],
+            {**self._base(r["codigo"]), "codigo": r["codigo"],
              # nome é obrigatório no serving; sem nome na origem exibe-se o próprio código
              "nome": r.get("nome") or r["codigo"], "tipo": r.get("tipo"), "vidas_alvo": None}
-            for r in rows], "uq_contratos_tenant_codigo", ["id_plano", "nome", "tipo"])
+            for r in rows], "uq_contratos_tenant_codigo", ["nome", "tipo"])
+
+    def planos_contratos(self, rows: list[dict]) -> None:
+        planos, contratos = self.ids("plano"), self.ids("contrato")
+        dados = [{**self._base(f"{r['contrato_codigo']}/{r['plano_codigo']}"),
+                  "id_contrato": contratos[r["contrato_codigo"]], "id_plano": planos[r["plano_codigo"]]}
+                 for r in rows]
+        tabela = PlanoContrato.__table__
+        ins = upd = 0
+        for i in range(0, len(dados), _CHUNK):
+            stmt = pg_insert(tabela).values(dados[i:i + _CHUNK])
+            stmt = stmt.on_conflict_do_update(
+                constraint="pk_planos_contratos",
+                set_={c: stmt.excluded[c] for c in list(self.lineage) + ["source_record_id"]},
+            ).returning(literal_column("(xmax = 0)").label("inserido"))
+            for (inserido,) in self.s.execute(stmt).all():
+                ins += 1 if inserido else 0
+                upd += 0 if inserido else 1
+        self.stats.add("plano_contrato", ins, upd)
 
     def prestadores(self, rows: list[dict]) -> None:
         esp = self.ids("especialidade")

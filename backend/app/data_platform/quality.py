@@ -40,7 +40,7 @@ COBERTURA = {
 
 #: FKs por código de negócio: campo → entidade referenciada
 FKS = {
-    "contrato": {"plano_codigo": "plano"},
+    "plano_contrato": {"contrato_codigo": "contrato", "plano_codigo": "plano"},
     "prestador": {"especialidade_codigo": "especialidade"},
     "procedimento": {"especialidade_codigo": "especialidade"},
     "beneficiario": {"plano_codigo": "plano", "contrato_codigo": "contrato"},
@@ -193,6 +193,15 @@ def evaluate(mapping: Mapping, results: dict[str, EntityResult], files_present: 
                  falhas, len(rows))
             rejeitadas |= {r["_line"] for r in falhas}
 
+        # 3b. o plano do beneficiário tem de ser um plano do contrato dele (N:N)
+        if entity == "beneficiario":
+            pares = validos.get("plano_contrato", set())
+            fora = [r for r in rows if r["_line"] not in rejeitadas
+                    and (r.get("contrato_codigo"), r.get("plano_codigo")) not in pares]
+            _add(report, "plano_fora_do_contrato", ERROR, entity,
+                 "plano_codigo não é um plano do contrato_codigo (plano_contrato)", fora, len(rows))
+            rejeitadas |= {r["_line"] for r in fora}
+
         # 4. UF válida (região derivada de cidade/UF)
         if entity in ("beneficiario", "prestador"):
             ruins = [r for r in rows if str(r.get("uf", "")).upper() not in MACRORREGIAO_UF]
@@ -238,6 +247,9 @@ def evaluate(mapping: Mapping, results: dict[str, EntityResult], files_present: 
         chave = business_keys[entity]
         if chave == ("codigo",):
             validos.setdefault(entity, set()).update(r["codigo"] for r in validas)
+        elif entity == "plano_contrato":
+            validos.setdefault(entity, set()).update(
+                (r["contrato_codigo"], r["plano_codigo"]) for r in validas)
     return report
 
 

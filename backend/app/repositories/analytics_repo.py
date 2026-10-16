@@ -621,13 +621,22 @@ _DIM_ESCOPO_CONTRATO: dict[str, tuple[str, str, str]] = {
 }
 
 
+#: contrato × plano é N:N — o rótulo "plano" do contrato é a lista dos planos que ele oferece
+_PLANOS_DO_CONTRATO = """
+    SELECT pc.id_contrato, string_agg(pl.nome, ', ' ORDER BY pl.nome) AS plano
+    FROM planos_contratos pc JOIN planos pl ON pl.id = pc.id_plano
+    WHERE pc.tenant_id = :t
+    GROUP BY pc.id_contrato
+"""
+
+
 def contrato_info(session: Session, id_contrato: int) -> dict | None:
     r = session.execute(
         text(
             """
-            SELECT ct.id, ct.nome, ct.tipo, ct.vidas_alvo, pl.nome AS plano,
-                   pl.id AS id_plano
-            FROM contratos ct JOIN planos pl ON pl.id = ct.id_plano
+            SELECT ct.id, ct.nome, ct.tipo, ct.vidas_alvo, pc.plano
+            FROM contratos ct
+            LEFT JOIN (""" + _PLANOS_DO_CONTRATO + """) pc ON pc.id_contrato = ct.id
             WHERE ct.tenant_id = :t AND ct.id = :c
             """
         ),
@@ -672,13 +681,13 @@ def contratos_resumo_mes(session: Session, competencia: date) -> list[dict]:
     rows = session.execute(
         text(
             """
-            SELECT ac.id_contrato, ct.nome, ct.tipo, pl.nome AS plano,
+            SELECT ac.id_contrato, ct.nome, ct.tipo, pc.plano,
                    ac.vidas, ac.despesa, ac.despesa_bruta, ac.glosas, ac.coparticipacao,
                    ac.despesa_liquida, ac.eventos, ac.custo_pmpm, ac.gini, ac.top5_share,
                    ac.n_beneficiarios_alto_custo
             FROM agg_contrato_competencia ac
             JOIN contratos ct ON ct.id = ac.id_contrato
-            JOIN planos pl ON pl.id = ct.id_plano
+            LEFT JOIN (""" + _PLANOS_DO_CONTRATO + """) pc ON pc.id_contrato = ct.id
             WHERE ac.tenant_id = :t AND ac.competencia = :m
             ORDER BY ac.despesa_liquida DESC
             """

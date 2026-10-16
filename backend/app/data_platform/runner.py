@@ -470,7 +470,8 @@ def _transform_and_publish(meta: _Meta, ctx: PipelineContext, mapping: Mapping, 
         loader.ensure_competencias(meses)
         etapas = {
             "especialidade": loader.especialidades, "plano": loader.planos,
-            "contrato": loader.contratos, "prestador": loader.prestadores,
+            "contrato": loader.contratos, "plano_contrato": loader.planos_contratos,
+            "prestador": loader.prestadores,
             "procedimento": loader.procedimentos,
             "beneficiario": lambda rows: loader.beneficiarios(rows, ref_inicio, ref_fim),
             "receita": loader.receitas, "evento_assistencial": loader.eventos,

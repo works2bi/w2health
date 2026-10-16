@@ -58,10 +58,11 @@ nos fatos/agregados. Sem SCD complexo na v1.2 — mas documentar onde vai doer:
 ```
 tenant → competencia
       → regiao, especialidade, plano
-      → contrato (depende de plano)
+      → contrato
+      → plano_contrato (depende de contrato, plano — N:N)
       → procedimento (depende de especialidade), diagnostico
       → prestador (depende de regiao, especialidade)
-      → beneficiario (depende de plano, contrato, regiao)
+      → beneficiario (depende de plano_contrato, regiao)
       → receita (depende de plano)
       → evento_assistencial (depende de tudo acima)
       → [Gold] agg_sinistralidade → agg_competencia_dimensao / agg_prestador / agg_beneficiario → agg_contrato

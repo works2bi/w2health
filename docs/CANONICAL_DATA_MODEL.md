@@ -53,6 +53,7 @@ Silver · ⏸ layout preparado, sem carga · — cadastro da plataforma.
 | `especialidade` | `especialidades` | 1 por especialidade | `(tenant_id, codigo)` | ✅ |
 | `plano` | `planos` | 1 por produto | `(tenant_id, codigo)` | ✅ |
 | `contrato` | `contratos` | 1 por contrato/apólice | `(tenant_id, codigo)` | ✅ |
+| `plano_contrato` | `planos_contratos` | 1 por plano oferecido pelo contrato (N:N) | `(tenant_id, contrato, plano)` | ✅ |
 | `prestador` | `prestadores` | 1 por prestador | `(tenant_id, codigo)` | ✅ |
 | `procedimento` | `procedimentos` | 1 por código de procedimento | `(tenant_id, codigo)` | ✅ |
 | `beneficiario` | `beneficiarios` | 1 por vida (estado atual) | `(tenant_id, codigo)` | ✅ |
@@ -71,8 +72,8 @@ NOT NULL, sem default, e é protegida por RLS ([MULTI_TENANCY.md](MULTI_TENANCY.
 
 FKs chegam por **código de negócio** (`plano_codigo`, `beneficiario_codigo`…) e são
 convertidas em ids técnicos (`id_plano`…) na Silver. "Obrig." = obrigatório no contrato
-operacional (`canonical.py`). Ordem de carga: especialidade → plano → contrato → prestador →
-procedimento → beneficiário → receita → evento.
+operacional (`canonical.py`). Ordem de carga: especialidade → plano → contrato → plano_contrato →
+prestador → procedimento → beneficiário → receita → evento.
 
 ### 4.1 especialidade — carga: UPSERT por código
 | Campo | Tipo | Obrig. | Observação |
@@ -96,12 +97,23 @@ Só no banco: `ticket_medio_base` (parâmetro do gerador sintético; nulo para f
 | Campo | Tipo | Obrig. | Observação |
 |---|---|---|---|
 | `codigo` | string | sim | |
-| `plano_codigo` | string | sim | FK → plano |
 | `nome` | string | não | ausente → recebe o próprio `codigo` (exibição) |
 | `tipo` | string | não | `PF` · `PME` · `Empresarial` |
 
+Contrato **não** guarda plano: um contrato oferece N planos (ver `plano_contrato`).
+
 No YAML, mas **fora da carga e do banco**: `data_base`, `meta_sinistralidade` (layout de
 reajuste). Só no banco: `vidas_alvo` (gerador sintético; nulo para fonte real).
+
+### 4.3.1 plano_contrato — carga: UPSERT pelo par (contrato, plano)
+| Campo | Tipo | Obrig. | Observação |
+|---|---|---|---|
+| `contrato_codigo` | string | sim | FK → contrato |
+| `plano_codigo` | string | sim | FK → plano |
+
+1 linha por plano que o contrato oferece. PK no banco: `(tenant_id, id_contrato, id_plano)`.
+Par ausente numa carga não é removido (beneficiários podem apontar para ele). Preço por par
+(tabela de preço × grupo/faixa etária) é outra entidade — fora da v1.
 
 ### 4.4 prestador — carga: UPSERT por código
 | Campo | Tipo | Obrig. | Observação |
@@ -132,7 +144,7 @@ Só no banco: `complexidade`, `custo_base`, `tipo_atendimento_tipico`, `idade_mi
 | `codigo` | string | sim | identificador **pseudonimizado**; nunca CPF/CNS |
 | `data_nascimento` | date | sim | |
 | `sexo` | string | não | `M` · `F` — ver divergência D1 |
-| `plano_codigo` | string | sim | FK → plano |
+| `plano_codigo` | string | sim | FK → plano; tem de ser um plano do contrato (`plano_fora_do_contrato` = ERROR) |
 | `contrato_codigo` | string | sim | FK → contrato |
 | `cidade`, `uf` | string | sim | viram `id_regiao` |
 | `data_adesao` | date | sim | |

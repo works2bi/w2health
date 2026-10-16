@@ -39,16 +39,6 @@ fields:
     typical_source: "cadastro comercial / contratos"
     transformation: "-"
     quality_rules: []
-  - name: id_plano
-    type: bigint
-    nullable: false
-    required_for: [contract]
-    classification: internal
-    description: "Plano ao qual o contrato pertence. Um plano tem N contratos."
-    example: 12
-    typical_source: "cadastro comercial"
-    transformation: "lookup plano.codigo -> id_plano"
-    quality_rules: []
   - name: nome
     type: string
     nullable: true
@@ -92,6 +82,7 @@ fields:
 metadata_fields: [tenant_id, source_system, source_entity, source_record_id, ingestion_id,
                   ingestion_timestamp, source_updated_at, reference_date, raw_payload_hash]
 notes: >
-  No modelo sintético do W2Health, contrato tem `vidas_alvo` (só orienta a geração). Num
+  Contrato NÃO guarda plano: contrato × plano é N:N e os planos que o contrato oferece vêm em
+  `plano_contrato`. O plano de cada vida fica no beneficiário. No modelo sintético do W2Health, contrato tem `vidas_alvo` (só orienta a geração). Num
   cliente real esse campo não existe. `data_base` / `meta_sinistralidade` são o começo do
   layout de reajuste — mantidos aqui como contrato, sem lógica associada na v1.2.

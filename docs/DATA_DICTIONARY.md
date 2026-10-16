@@ -50,8 +50,8 @@ Sensibilidade: `interno` · `operacional` · **dado pessoal** (LGPD) · **dado d
 | `codigo` | string | sim | Identificador do beneficiário no sistema de origem (matrícula/carteirinha), pseudonimizado. Único POR TENANT. | cadastro / carteira | operacional | — |
 | `data_nascimento` | date | beneficiary, contract | Usada para faixa etária e (futuro) rateio de receita por faixa. | cadastro | **dado pessoal** | — |
 | `sexo` | string | não | M / F (como registrado na operadora). | cadastro | **dado pessoal** | — |
-| `id_plano` | bigint | loss_ratio, contract | FK para plano. | cadastro | interno | — |
-| `id_contrato` | bigint | contract, beneficiary | FK para contrato. Se ausente, Contract Intelligence fica indisponível. | cadastro comercial | interno | contrato_inexistente |
+| `id_plano` | bigint | loss_ratio, contract | Plano em que a vida está. Tem de ser um dos planos do contrato do beneficiário (FK composta (tenant_id, id_contrato, id_plano) -> plano_contrato). | cadastro | interno | plano_fora_do_contrato |
+| `id_contrato` | bigint | contract, beneficiary | FK para contrato. Se ausente, Contract Intelligence fica indisponível. | cadastro comercial | interno | contrato_inexistente, plano_fora_do_contrato |
 | `data_adesao` | date | cohorts, contract | Início de vínculo. Base da coorte 'novos na carteira' e da contagem de vidas. | movimentação cadastral | operacional | data_saida_antes_adesao |
 | `data_saida` | date | cohorts | Fim de vínculo (null = ativo). Base da coorte 'saíram da carteira'. | movimentação cadastral | operacional | data_saida_antes_adesao |
 | `motivo_saida` | string | não | cancelamento / óbito / demissão / portabilidade / inadimplência. RECOMENDADO — melhora a leitura das coortes. Não modelado no W2Health v1.2. | movimentação cadastral | operacional | — |
@@ -88,13 +88,27 @@ Sensibilidade: `interno` · `operacional` · **dado pessoal** (LGPD) · **dado d
 | `tenant_id` | string | sim | Cliente. | constante | interno | tenant_id_ausente |
 | `id_contrato` | bigint | contract | Surrogate key. | gerado | interno | — |
 | `codigo` | string | contract | Número/identificador do contrato na operadora. Único por tenant. | cadastro comercial / contratos | operacional | — |
-| `id_plano` | bigint | contract | Plano ao qual o contrato pertence. Um plano tem N contratos. | cadastro comercial | interno | — |
 | `nome` | string | não | Nome/razão social do contratante (mascarado se PF). | cadastro comercial | operacional | — |
 | `tipo` | string | não | PF / PME / Empresarial (afeta regra de reajuste — fora do escopo v1.2). | cadastro comercial | operacional | — |
 | `data_base` | date | reajuste | Mês de aniversário do contrato (data-base do reajuste). RECOMENDADO. Não usado na v1.2. | contratos | operacional | — |
 | `meta_sinistralidade` | numeric | reajuste | Meta de sinistralidade do contrato (%). OPCIONAL — pré-requisito de reajuste, não usado na v1.2. | atuária / comercial | operacional | — |
 
-> No modelo sintético do W2Health, contrato tem `vidas_alvo` (só orienta a geração). Num cliente real esse campo não existe. `data_base` / `meta_sinistralidade` são o começo do layout de reajuste — mantidos aqui como contrato, sem lógica associada na v1.2.
+> Contrato NÃO guarda plano: contrato × plano é N:N e os planos que o contrato oferece vêm em `plano_contrato`. O plano de cada vida fica no beneficiário. No modelo sintético do W2Health, contrato tem `vidas_alvo` (só orienta a geração). Num cliente real esse campo não existe. `data_base` / `meta_sinistralidade` são o começo do layout de reajuste — mantidos aqui como contrato, sem lógica associada na v1.2.
+
+## plano_contrato
+
+*Grão:* 1 linha por plano oferecido por um contrato (contrato × plano é N:N)  
+*Chave primária:* `tenant_id, id_contrato, id_plano`  
+*Chaves de negócio:* (tenant_id, contrato_codigo, plano_codigo)  
+*Carga:* UPSERT
+
+| Campo | Tipo | Obrig. | Descrição | Origem típica | Sensibilidade | Regras DQ |
+|---|---|---|---|---|---|---|
+| `tenant_id` | string | sim | Cliente. | constante | interno | tenant_id_ausente |
+| `id_contrato` | bigint | contract | FK para contrato. Parte da chave. | cadastro comercial / contratos | interno | — |
+| `id_plano` | bigint | contract | FK para plano. Parte da chave. | cadastro comercial / contratos | interno | — |
+
+> Um contrato oferece N planos e um plano é vendido em N contratos. O beneficiário aponta para o par (contrato, plano) em que está — só pode estar num plano do próprio contrato. Par ausente numa carga não é removido (beneficiários podem apontar para ele). Preço por par (tabela de preço × grupo/faixa etária) é outra entidade, fora da v1.
 
 ## prestador
 

@@ -99,7 +99,7 @@ def test_raw_rastreavel_e_integro(csv_env):
     with iso.owner() as s:
         raws = s.execute(text("SELECT tenant_id, storage_key, sha256, records, source_entity FROM raw_objects "
                               "WHERE ingestion_run_id = :r"), {"r": csv_env["run_a"]["ingestion_run_id"]}).all()
-    assert len(raws) == 8
+    assert len(raws) == 9
     st = get_raw_storage()
     import hashlib
 
@@ -266,6 +266,37 @@ def test_data_quality_bloqueia_promocao(csv_env):
         depois = s.execute(text("SELECT count(*), sum(valor_apresentado) FROM eventos_assistenciais "
                                 "WHERE tenant_id = :t"), {"t": CSV_B}).one()
     assert tuple(depois) == tuple(antes)  # nada promovido
+
+
+def test_contrato_com_varios_planos(csv_env):
+    """Contrato × plano é N:N: CT-004 (empresarial) oferece 2 planos e tem beneficiários
+    nos dois; todo beneficiário está num plano do próprio contrato."""
+    with csv_env["iso"].owner() as s:
+        planos = s.execute(text(
+            "SELECT pl.codigo FROM planos_contratos pc JOIN contratos ct ON ct.id = pc.id_contrato "
+            "JOIN planos pl ON pl.id = pc.id_plano WHERE pc.tenant_id = :t AND ct.codigo = 'CT-004' "
+            "ORDER BY 1"), {"t": CSV_A}).scalars().all()
+        dos_benef = s.execute(text(
+            "SELECT DISTINCT pl.codigo FROM beneficiarios b JOIN contratos ct ON ct.id = b.id_contrato "
+            "JOIN planos pl ON pl.id = b.id_plano WHERE b.tenant_id = :t AND ct.codigo = 'CT-004' "
+            "ORDER BY 1"), {"t": CSV_A}).scalars().all()
+    assert planos == ["PL-EMPRESA", "PL-SUPERIOR"]
+    assert dos_benef == planos
+
+
+def test_plano_fora_do_contrato_bloqueia(csv_env):
+    sa = csv_env["sa"]
+    linhas = csv_env["pb"]["beneficiarios.csv"].decode().splitlines()
+    i = next(n for n, linha in enumerate(linhas[1:], start=1) if linha.split(";")[4] == "CT-001")
+    campos = linhas[i].split(";")
+    campos[3] = "PL-PADRAO"  # CT-001 só oferece PL-ESSENCIAL
+    linhas[i] = ";".join(campos)
+    ruim = {**csv_env["pb"], "beneficiarios.csv": ("\n".join(linhas) + "\n").encode()}
+    r = _upload(sa, CSV_B, csv_env["fontes"][CSV_B], ruim)
+    assert r["status"] == "FAILED" and r["stage"] == "RECEIVED"
+    det = sa.get(f"/api/admin/tenants/{CSV_B}/ingestion-runs/{r['ingestion_run_id']}").json()
+    regras = {(d["rule_id"], d["severity"]) for d in det["data_quality"]}
+    assert ("plano_fora_do_contrato", "ERROR") in regras
 
 
 def test_arquivo_obrigatorio_ausente_falha(csv_env):

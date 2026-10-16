@@ -8,6 +8,7 @@ Implementação executável: [`rules.py`](rules.py). Testes:
 | `tenant_id_ausente` | todas | **ERROR** | linha canônica sem `tenant_id` | bloqueia a entidade |
 | `benef_inexistente_em_evento` | evento_assistencial | **ERROR** | `id_beneficiario` do evento não existe em `silver.beneficiario` | bloqueia |
 | `contrato_inexistente` | evento_assistencial, beneficiario | **ERROR** | `id_contrato` referenciado não existe | bloqueia |
+| `plano_fora_do_contrato` | beneficiario | **ERROR** | par (`id_contrato`, `id_plano`) do beneficiário não existe em `plano_contrato` — o plano não é oferecido pelo contrato | bloqueia |
 | `prestador_inexistente` | evento_assistencial | **ERROR** | `id_prestador` não existe | bloqueia |
 | `valor_negativo` | evento_assistencial, receita | **ERROR** | `valor_apresentado < 0` ou `valor_pago < 0` ou receita `< 0` | bloqueia |
 | `competencia_invalida` | evento_assistencial, receita | **ERROR** | competência não é o 1º dia de um mês válido | bloqueia |

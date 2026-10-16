@@ -57,6 +57,11 @@ def test_chave_de_negocio_e_composta_sem_colisao(db):
         text("SELECT id_regiao, id_plano, id_contrato FROM beneficiarios LIMIT 1")
     ).mappings().first()
     for tid in ("tenant_a", "tenant_b"):
+        # o beneficiário referencia o par (tenant, contrato, plano) — FK composta
+        db.execute(
+            text("INSERT INTO planos_contratos (tenant_id, id_contrato, id_plano) VALUES (:t, :c, :p)"),
+            {"t": tid, "c": base["id_contrato"], "p": base["id_plano"]},
+        )
         db.execute(
             text(
                 "INSERT INTO beneficiarios (tenant_id, codigo, sexo, data_nascimento, "
