@@ -25,11 +25,11 @@ decididos, documentados e testados um por vez. **Nunca** rodar `npm audit fix --
 
 | Pacote | Antes (Fase 2) | Depois | Achados resolvidos |
 |---|---|---|---|
-| next | 14.2.35 (crítico) | **15.5.27** | RCE no otimizador de imagem e em servidores Windows, SSRF (Server Actions, rewrites, WebSocket), DoS em Server Components/Actions, cache poisoning de RSC, bypass de middleware i18n, XSS com nonce/beforeInteractive, request smuggling |
+| next | 14.2.35 (crítico) | **15.5.28** | RCE no otimizador de imagem e em servidores Windows, SSRF (Server Actions, rewrites, WebSocket), DoS em Server Components/Actions, cache poisoning de RSC, bypass de middleware i18n, XSS com nonce/beforeInteractive, request smuggling; RCE no Image Optimization com SVG (GHSA-2464-fhr4-w9xw) e DoS em Server Actions (GHSA-p3m5-59mp-jv5r) corrigidos na 15.5.28 |
 | react / react-dom | 18.3.1 | 19.2.0 | requisito do App Router no Next 15 |
 | recharts / swr | 2.13.3 / 2.2.x | 2.15.4 / 2.5.1 | mesmo major; suporte a React 19 |
 | postcss (interno do Next), source-map-js | 8.4.31 / 1.2.1 | 8.5.29 / 1.2.2 via `overrides` | XSS no stringify, leitura de arquivo via sourceMappingURL, DoS — **mesma linha (minor/patch)** |
-| eslint-config-next | 14.2.35 | 15.5.27 | glob/plugin vulneráveis da linha 14 |
+| eslint-config-next | 14.2.35 | 15.5.28 | glob/plugin vulneráveis da linha 14 |
 | fastapi | 0.115.14 | **0.142.2** | permite Starlette corrigido |
 | starlette | 0.46.2 | **1.7.0** | multipart grande bloqueando o event loop, `request.form()` sem limite efetivo, Range quadrático, Host/path na reconstrução de URL, StaticFiles no Windows, dispatch de método |
 | cryptography | 46.0.7 | **50.0.2** | PKCS7, validação de cadeia X.509, OpenSSL embutido |
