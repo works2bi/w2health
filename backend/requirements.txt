@@ -50,7 +50,7 @@ markupsafe==3.0.3
     # via mako
 numpy==2.5.2
     # via w2health-backend
-opentelemetry-api==1.45.0
+opentelemetry-api==1.45.1
     # via fastapi
 psycopg==3.3.5
     # via w2health-backend
