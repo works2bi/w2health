@@ -9,12 +9,15 @@ from app.api.v1.routes import (
     beneficiarios,
     config,
     contratos,
+    empresas,
     executive,
     health,
     insights,
+    investigacao,
     prestadores,
     procedimentos,
     public,
+    receitas,
     sinistralidade,
     tenant_admin,
 )
@@ -32,5 +35,8 @@ api_v1_router.include_router(procedimentos.router)
 api_v1_router.include_router(prestadores.router)
 api_v1_router.include_router(beneficiarios.router)
 api_v1_router.include_router(contratos.router)
+api_v1_router.include_router(empresas.router)
+api_v1_router.include_router(receitas.router)
 api_v1_router.include_router(insights.router)
+api_v1_router.include_router(investigacao.router)
 api_v1_router.include_router(config.router)

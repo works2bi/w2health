@@ -59,19 +59,60 @@ _DIMENSOES: dict[str, tuple[str, str, str]] = {
         "b.sexo",
         "b.sexo",
     ),
+    # plano/contrato: SÓ o vínculo da competência gravado no evento (Consolidação V1).
+    # Evento sem vínculo vigente vai para a chave `nao_atribuido` — nunca para o contrato
+    # atual do beneficiário. (Registros anteriores foram preenchidos pela migration d0e1f2a3b4c5.)
     "plano": (
-        "JOIN beneficiarios b ON b.id = e.id_beneficiario "
-        "JOIN planos pl ON pl.id = b.id_plano",
-        "pl.id::text",
-        "pl.nome",
+        "LEFT JOIN planos pl ON pl.id = e.id_plano",
+        "COALESCE(pl.id::text, 'nao_atribuido')",
+        "COALESCE(pl.nome, 'Não atribuído')",
     ),
     "contrato": (
-        "JOIN beneficiarios b ON b.id = e.id_beneficiario "
-        "JOIN contratos ct ON ct.id = b.id_contrato",
-        "ct.id::text",
-        "ct.nome",
+        "LEFT JOIN contratos ct ON ct.id = e.id_contrato",
+        "COALESCE(ct.id::text, 'nao_atribuido')",
+        "COALESCE(ct.nome, 'Não atribuído')",
     ),
 }
+
+#: janela de dados do PRÓPRIO tenant (o calendário `competencias` é global)
+_SQL_JANELA = """c.competencia BETWEEN
+      (SELECT min(m) FROM (SELECT min(competencia) AS m FROM eventos_assistenciais WHERE tenant_id = :tenant
+                           UNION ALL SELECT min(competencia) FROM receitas WHERE tenant_id = :tenant
+                           UNION ALL SELECT min(competencia) FROM receitas_reconhecidas
+                                     WHERE tenant_id = :tenant) j)
+  AND (SELECT max(m) FROM (SELECT max(competencia) AS m FROM eventos_assistenciais WHERE tenant_id = :tenant
+                           UNION ALL SELECT max(competencia) FROM receitas WHERE tenant_id = :tenant
+                           UNION ALL SELECT max(competencia) FROM receitas_reconhecidas
+                                     WHERE tenant_id = :tenant) j)"""
+
+#: vidas por competência × contrato pelo VÍNCULO VIGENTE (Consolidação V1): beneficiário com
+#: histórico conta pelo vínculo que contém o 1º dia da competência (situação vazia/ativo);
+#: sem histórico, pelo cadastro (adesão ≤ competência < saída). Quem não tem vínculo vigente
+#: não é exposto em contrato algum — nunca pelo contrato atual.
+_SQL_VIDAS_CTE = f"""
+hist AS (SELECT DISTINCT id_beneficiario FROM beneficiario_vinculos WHERE tenant_id = :tenant),
+expo AS (
+    SELECT c.competencia, v.id_contrato, COUNT(*) AS vidas
+    FROM competencias c
+    JOIN beneficiario_vinculos v
+      ON v.tenant_id = :tenant AND v.vigencia_inicio <= c.competencia
+     AND (v.vigencia_fim IS NULL OR v.vigencia_fim > c.competencia)
+     AND COALESCE(v.situacao, 'ativo') = 'ativo'
+    WHERE {_SQL_JANELA}
+    GROUP BY c.competencia, v.id_contrato
+    UNION ALL
+    SELECT c.competencia, b.id_contrato, COUNT(*) AS vidas
+    FROM competencias c
+    JOIN beneficiarios b
+      ON b.tenant_id = :tenant AND b.data_adesao <= c.competencia
+     AND (b.data_saida IS NULL OR b.data_saida > c.competencia)
+    WHERE {_SQL_JANELA}
+      AND NOT EXISTS (SELECT 1 FROM hist h WHERE h.id_beneficiario = b.id)
+    GROUP BY c.competencia, b.id_contrato
+),
+vidas_ctr AS (SELECT competencia, id_contrato, SUM(vidas) AS vidas FROM expo
+              GROUP BY competencia, id_contrato)"""
+
 
 # expressões de composição financeira reaproveitadas por várias INSERTs
 _COMPOSICAO = """
@@ -94,14 +135,55 @@ def rebuild_aggregations(session: Session, tenant_id: str = DEFAULT_TENANT) -> d
         session.execute(text(f"DELETE FROM {tbl} WHERE tenant_id = :tenant"), p)
 
     # ---- sinistralidade por competência ----
+    # Consolidação V1: UMA fonte de receita por competência — reconhecida (se houver linha
+    # não estimada) senão legada por plano; NUNCA as duas somadas. As duas presentes e
+    # diferentes acima de R$ 0,01 → `receita_status = 'divergente'` (a API não publica a
+    # sinistralidade dessa competência; o pipeline reprova a carga).
     session.execute(
         text(
-            """
+            f"""
             INSERT INTO agg_sinistralidade_competencia
                 (tenant_id, competencia, receita, despesa_bruta, glosas, coparticipacao,
                  despesa_liquida, sinistralidade_bruta, sinistralidade_liquida,
                  beneficiarios_ativos, exposicao_beneficiario_mes, eventos, custo_pmpm,
-                 receita_media_beneficiario)
+                 receita_media_beneficiario, fonte_receita, receita_status, receita_legada,
+                 receita_atribuida_contrato, receita_empresa_nao_detalhada,
+                 receita_nao_atribuida, cobertura_receita_contratual)
+            WITH {_SQL_VIDAS_CTE},
+            vidas_total AS (SELECT competencia, SUM(vidas) AS vidas FROM vidas_ctr GROUP BY competencia),
+            rl AS (
+                SELECT competencia, SUM(receita_contraprestacao) AS receita,
+                       SUM(quantidade_beneficiarios) AS expo
+                FROM receitas WHERE tenant_id = :tenant GROUP BY competencia
+            ),
+            rr AS (
+                SELECT competencia, SUM(receita_contraprestacao) AS receita,
+                       SUM(quantidade_beneficiarios) AS expo,
+                       SUM(receita_contraprestacao) FILTER (
+                           WHERE nivel_atribuicao IN ('contrato_plano', 'contrato')) AS atrib,
+                       SUM(receita_contraprestacao) FILTER (WHERE nivel_atribuicao = 'empresa') AS emp,
+                       SUM(receita_contraprestacao) FILTER (WHERE nivel_atribuicao = 'nao_atribuida') AS na
+                FROM receitas_reconhecidas
+                WHERE tenant_id = :tenant AND NOT estimada GROUP BY competencia
+            ),
+            rc AS (
+                SELECT c.competencia,
+                       CASE WHEN rr.competencia IS NOT NULL THEN rr.receita ELSE rl.receita END AS receita,
+                       CASE WHEN rr.competencia IS NOT NULL
+                            THEN COALESCE(NULLIF(rr.expo, 0), vt.vidas) ELSE rl.expo END AS expo,
+                       CASE WHEN rr.competencia IS NOT NULL THEN 'reconhecida'
+                            WHEN rl.competencia IS NOT NULL THEN 'legada_plano'
+                            ELSE 'sem_receita' END AS fonte,
+                       CASE WHEN rr.competencia IS NOT NULL AND rl.competencia IS NOT NULL
+                                 AND abs(rr.receita - rl.receita) > 0.01 THEN 'divergente'
+                            ELSE 'ok' END AS status,
+                       rl.receita AS legada, rr.atrib, rr.emp, rr.na,
+                       CASE WHEN rr.receita > 0 THEN COALESCE(rr.atrib, 0) / rr.receita END AS cobertura
+                FROM competencias c
+                LEFT JOIN rl ON rl.competencia = c.competencia
+                LEFT JOIN rr ON rr.competencia = c.competencia
+                LEFT JOIN vidas_total vt ON vt.competencia = c.competencia
+            )
             SELECT
                 CAST(:tenant AS varchar),
                 c.competencia,
@@ -120,14 +202,11 @@ def rebuild_aggregations(session: Session, tenant_id: str = DEFAULT_TENANT) -> d
                 CASE WHEN COALESCE(rc.expo,0) > 0
                      THEN COALESCE(ev.despesa_liquida,0) / rc.expo ELSE 0 END,
                 CASE WHEN COALESCE(rc.expo,0) > 0
-                     THEN COALESCE(rc.receita,0) / rc.expo ELSE 0 END
+                     THEN COALESCE(rc.receita,0) / rc.expo ELSE 0 END,
+                rc.fonte, rc.status, rc.legada,
+                COALESCE(rc.atrib, 0), COALESCE(rc.emp, 0), COALESCE(rc.na, 0), rc.cobertura
             FROM competencias c
-            LEFT JOIN (
-                SELECT competencia,
-                       SUM(receita_contraprestacao) AS receita,
-                       SUM(quantidade_beneficiarios) AS expo
-                FROM receitas WHERE tenant_id = :tenant GROUP BY competencia
-            ) rc ON rc.competencia = c.competencia
+            LEFT JOIN rc ON rc.competencia = c.competencia
             LEFT JOIN (
                 SELECT competencia,
                        SUM(valor_apresentado)                                       AS despesa_bruta,
@@ -138,11 +217,7 @@ def rebuild_aggregations(session: Session, tenant_id: str = DEFAULT_TENANT) -> d
                 FROM eventos_assistenciais WHERE tenant_id = :tenant GROUP BY competencia
             ) ev ON ev.competencia = c.competencia
             -- Fase 2: só a janela de dados do PRÓPRIO tenant (o calendário é global)
-            WHERE c.competencia BETWEEN
-                  (SELECT min(m) FROM (SELECT min(competencia) AS m FROM eventos_assistenciais WHERE tenant_id = :tenant
-                                       UNION ALL SELECT min(competencia) FROM receitas WHERE tenant_id = :tenant) j)
-              AND (SELECT max(m) FROM (SELECT max(competencia) AS m FROM eventos_assistenciais WHERE tenant_id = :tenant
-                                       UNION ALL SELECT max(competencia) FROM receitas WHERE tenant_id = :tenant) j)
+            WHERE {_SQL_JANELA}
             """
         ),
         p,
@@ -242,7 +317,8 @@ def rebuild_aggregations(session: Session, tenant_id: str = DEFAULT_TENANT) -> d
             INSERT INTO agg_beneficiario_competencia
                 (tenant_id, competencia, id_beneficiario, id_contrato,
                  despesa, despesa_bruta, glosas, coparticipacao, despesa_liquida, eventos)
-            SELECT CAST(:tenant AS varchar), e.competencia, e.id_beneficiario, MIN(b.id_contrato),
+            SELECT CAST(:tenant AS varchar), e.competencia, e.id_beneficiario,
+                   MIN(e.id_contrato),
                    SUM(e.valor_pago),
                    SUM(e.valor_apresentado),
                    SUM(e.valor_glosado),
@@ -258,71 +334,105 @@ def rebuild_aggregations(session: Session, tenant_id: str = DEFAULT_TENANT) -> d
         p,
     )
 
-    # ---- contrato x competência (Contract Intelligence — v1.2) ----
-    # vidas = beneficiários "ativos" do contrato no mês (aderiram até a competência e não
-    # saíram até ela). despesa/eventos vêm de agg_beneficiario_competencia (já com
-    # id_contrato). gini/top5_share/n_alto_custo calculados sobre despesa líquida por
-    # beneficiário do contrato no mês.
+    # ---- contrato x competência (Contract Intelligence — v1.2; Consolidação V1) ----
+    # vidas = exposição pelo VÍNCULO VIGENTE (_SQL_VIDAS_CTE); despesa/eventos direto do
+    # evento por `e.id_contrato` (um beneficiário que troca de contrato no mês divide a
+    # despesa corretamente); gini/top5/alto custo sobre a despesa líquida por beneficiário
+    # DENTRO do contrato; receita = reconhecida ATRIBUÍDA ao contrato (nunca empresa sem
+    # detalhamento, nunca estimada); sinistralidade só com receita atribuída, competência
+    # sem divergência e SEM receita consolidada não detalhada da empresa contratante do
+    # contrato na competência (ela pode conter parte da receita deste contrato) — senão
+    # nula + motivo. Nunca rateio.
     session.execute(
         text(
-            """
+            f"""
             INSERT INTO agg_contrato_competencia
                 (tenant_id, competencia, id_contrato, vidas,
                  despesa, despesa_bruta, glosas, coparticipacao, despesa_liquida,
                  eventos, beneficiarios_com_evento, custo_pmpm, gini, top5_share,
-                 n_beneficiarios_alto_custo)
-            WITH vidas AS (
-                SELECT c.competencia, b.id_contrato, COUNT(*) AS vidas
-                FROM competencias c
-                JOIN beneficiarios b
-                  ON b.tenant_id = :tenant
-                 AND b.data_adesao <= c.competencia
-                 AND (b.data_saida IS NULL OR b.data_saida > c.competencia)
-                WHERE c.competencia BETWEEN
-                      (SELECT min(m) FROM (SELECT min(competencia) AS m FROM eventos_assistenciais WHERE tenant_id = :tenant
-                                           UNION ALL SELECT min(competencia) FROM receitas WHERE tenant_id = :tenant) j)
-                  AND (SELECT max(m) FROM (SELECT max(competencia) AS m FROM eventos_assistenciais WHERE tenant_id = :tenant
-                                           UNION ALL SELECT max(competencia) FROM receitas WHERE tenant_id = :tenant) j)
-                GROUP BY c.competencia, b.id_contrato
-            ),
+                 n_beneficiarios_alto_custo, receita_reconhecida, sinistralidade_liquida,
+                 motivo_sem_sinistralidade)
+            WITH {_SQL_VIDAS_CTE},
             ben AS (
-                SELECT ac.competencia, ac.id_contrato,
-                       ac.despesa, ac.despesa_bruta, ac.glosas, ac.coparticipacao,
-                       ac.despesa_liquida, ac.eventos,
-                       ROW_NUMBER() OVER (PARTITION BY ac.competencia, ac.id_contrato
-                                          ORDER BY ac.despesa_liquida ASC) AS rnk_asc,
-                       ROW_NUMBER() OVER (PARTITION BY ac.competencia, ac.id_contrato
-                                          ORDER BY ac.despesa_liquida DESC) AS rnk_desc
-                FROM agg_beneficiario_competencia ac
-                WHERE ac.tenant_id = :tenant AND ac.despesa_liquida > 0
+                SELECT e.competencia, e.id_contrato, e.id_beneficiario,
+                       SUM(e.valor_pago) AS despesa, SUM(e.valor_apresentado) AS despesa_bruta,
+                       SUM(e.valor_glosado) AS glosas, SUM(e.valor_coparticipacao) AS coparticipacao,
+                       SUM(e.valor_apresentado - e.valor_glosado - e.valor_coparticipacao) AS despesa_liquida,
+                       COUNT(*) AS eventos
+                FROM eventos_assistenciais e
+                WHERE e.tenant_id = :tenant AND e.id_contrato IS NOT NULL
+                GROUP BY e.competencia, e.id_contrato, e.id_beneficiario
+            ),
+            ben_r AS (
+                SELECT ben.*,
+                       ROW_NUMBER() OVER (PARTITION BY competencia, id_contrato
+                                          ORDER BY despesa_liquida ASC) AS rnk_asc,
+                       ROW_NUMBER() OVER (PARTITION BY competencia, id_contrato
+                                          ORDER BY despesa_liquida DESC) AS rnk_desc
+                FROM ben
             ),
             ctr AS (
                 SELECT competencia, id_contrato,
                        SUM(despesa) AS despesa, SUM(despesa_bruta) AS despesa_bruta,
                        SUM(glosas) AS glosas, SUM(coparticipacao) AS coparticipacao,
                        SUM(despesa_liquida) AS despesa_liquida, SUM(eventos) AS eventos,
-                       COUNT(*) AS n_ben,
-                       SUM(rnk_asc * despesa_liquida) AS srv,
-                       SUM(despesa_liquida) FILTER (WHERE rnk_desc <= 5) AS top5,
+                       COUNT(*) FILTER (WHERE despesa_liquida > 0) AS n_ben,
+                       SUM(rnk_asc * despesa_liquida) FILTER (WHERE despesa_liquida > 0) AS srv,
+                       SUM(despesa_liquida) FILTER (WHERE rnk_desc <= 5 AND despesa_liquida > 0) AS top5,
                        COUNT(*) FILTER (WHERE despesa_liquida >= :alto) AS n_alto
-                FROM ben
+                FROM ben_r
                 GROUP BY competencia, id_contrato
+            ),
+            rrc AS (
+                SELECT competencia, id_contrato, SUM(receita_contraprestacao) AS receita
+                FROM receitas_reconhecidas
+                WHERE tenant_id = :tenant AND NOT estimada
+                  AND nivel_atribuicao IN ('contrato_plano', 'contrato')
+                GROUP BY competencia, id_contrato
+            ),
+            emp_nd AS (
+                SELECT DISTINCT rr.competencia, ec.id_contrato
+                FROM receitas_reconhecidas rr
+                JOIN empresas_contratos ec
+                  ON ec.tenant_id = rr.tenant_id AND ec.id_empresa = rr.id_empresa
+                 AND ec.papel = 'contratante' AND ec.vigencia_inicio <= rr.competencia
+                 AND (ec.vigencia_fim IS NULL OR ec.vigencia_fim > rr.competencia)
+                WHERE rr.tenant_id = :tenant AND NOT rr.estimada AND rr.nivel_atribuicao = 'empresa'
+            ),
+            chaves AS (
+                SELECT competencia, id_contrato FROM vidas_ctr WHERE id_contrato IS NOT NULL
+                UNION SELECT competencia, id_contrato FROM ctr
+                UNION SELECT competencia, id_contrato FROM rrc
             )
-            SELECT CAST(:tenant AS varchar), v.competencia, v.id_contrato, v.vidas,
+            SELECT CAST(:tenant AS varchar), k.competencia, k.id_contrato, COALESCE(v.vidas, 0),
                    COALESCE(ctr.despesa,0), COALESCE(ctr.despesa_bruta,0),
                    COALESCE(ctr.glosas,0), COALESCE(ctr.coparticipacao,0),
                    COALESCE(ctr.despesa_liquida,0), COALESCE(ctr.eventos,0),
                    COALESCE(ctr.n_ben,0),
-                   CASE WHEN v.vidas > 0 THEN COALESCE(ctr.despesa_liquida,0) / v.vidas ELSE 0 END,
+                   CASE WHEN COALESCE(v.vidas,0) > 0 THEN COALESCE(ctr.despesa_liquida,0) / v.vidas ELSE 0 END,
                    CASE WHEN COALESCE(ctr.n_ben,0) > 0 AND COALESCE(ctr.despesa_liquida,0) > 0
                         THEN (2.0 * ctr.srv) / (ctr.n_ben * ctr.despesa_liquida)
                              - (ctr.n_ben + 1.0) / ctr.n_ben
                         ELSE 0 END,
                    CASE WHEN COALESCE(ctr.despesa_liquida,0) > 0
                         THEN COALESCE(ctr.top5,0) / ctr.despesa_liquida ELSE 0 END,
-                   COALESCE(ctr.n_alto,0)
-            FROM vidas v
-            LEFT JOIN ctr ON ctr.competencia = v.competencia AND ctr.id_contrato = v.id_contrato
+                   COALESCE(ctr.n_alto,0),
+                   rrc.receita,
+                   CASE WHEN rrc.receita > 0 AND s.receita_status = 'ok' AND nd.id_contrato IS NULL
+                        THEN COALESCE(ctr.despesa_liquida, 0) / rrc.receita * 100 END,
+                   CASE WHEN rrc.receita IS NULL OR rrc.receita <= 0 THEN 'sem_receita_atribuida'
+                        WHEN s.receita_status <> 'ok' THEN 'receita_divergente'
+                        WHEN nd.id_contrato IS NOT NULL THEN 'receita_empresa_sem_detalhamento'
+                   END
+            FROM chaves k
+            JOIN competencias c ON c.competencia = k.competencia
+            LEFT JOIN vidas_ctr v ON v.competencia = k.competencia AND v.id_contrato = k.id_contrato
+            LEFT JOIN ctr ON ctr.competencia = k.competencia AND ctr.id_contrato = k.id_contrato
+            LEFT JOIN rrc ON rrc.competencia = k.competencia AND rrc.id_contrato = k.id_contrato
+            LEFT JOIN agg_sinistralidade_competencia s
+                   ON s.tenant_id = :tenant AND s.competencia = k.competencia
+            LEFT JOIN emp_nd nd ON nd.competencia = k.competencia AND nd.id_contrato = k.id_contrato
+            WHERE {_SQL_JANELA}
             """
         ),
         {"alto": ALTO_CUSTO_MES, **p},

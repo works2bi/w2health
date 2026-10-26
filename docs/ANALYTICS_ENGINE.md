@@ -223,3 +223,159 @@ Ver [V1.2.md](V1.2.md). Resumo do que mudou no motor:
 - **C6 — `indicadores.py`**: `contrato/concentracao`, `contrato/n_beneficiarios_alto_custo`,
   `beneficiario/novo_caso_alto_custo`, `beneficiario/recorrencia`. `alerts` deep-link
   `contrato → /contratos/{id}`.
+
+---
+
+## 13. Evolução V1 — investigação de custos: decomposição estrutural
+
+Diagnóstico e decisões: [EVOLUCAO_V1_INVESTIGACAO_CUSTOS.md](EVOLUCAO_V1_INVESTIGACAO_CUSTOS.md).
+Módulos: `decomposicao_estrutural.py` (puro), `baseline.py` (puro), `investigacao.py`
+(orquestrador + conclusões), `repositories/investigacao_repo.py`. Rota:
+`GET /analytics/investigacao`. Nada do que existia mudou de comportamento: Bennet,
+`bridge_composto`, `explicar`, `drill`, coortes e composição seguem iguais (`explicar`
+ganhou só o bloco aditivo `reconciliacao_base`, ver 13.9).
+
+### 13.1 Pergunta que o método responde
+
+> "A despesa líquida mudou R$ X. Quanto disso veio de mais gente, de gente mais velha, de
+> mais uso por pessoa, de procedimentos mais caros, de prestadores mais caros, de mais
+> diárias/sessões por atendimento, de reajuste de tabela, de aumento de preço sem tabela,
+> de procedimentos que não existiam antes, de glosa e de coparticipação?"
+
+Cada real da variação vai para **um** efeito (sem dupla contagem) e a soma dos efeitos é a
+variação observada (reconciliação exata, verificada em toda resposta).
+
+### 13.2 Estrutura
+
+Despesa **bruta** (Σ valor_apresentado) dos procedimentos presentes nos dois períodos:
+
+```
+D = E · f · Σ_p s_p · P̄_p
+P̄_p = Σ_h w_h · P_h        P_h = k_h · u_h        u_h = T_h · ρ_h (quando há tabela)
+
+E    exposição: beneficiários ativos no 1º dia de cada competência (beneficiário-mês)
+f    eventos por beneficiário-mês = Σ_a e_a · r_a   (a = faixa etária)
+s_p  participação do procedimento p no nº de eventos
+P̄_p  custo médio do procedimento p
+w_h  participação do prestador h no volume do procedimento
+k_h  quantidade por evento (sessões, diárias, itens)
+u_h  valor por unidade
+T_h  preço contratado vigente (tabela);  ρ_h = u_h / T_h
+```
+
+### 13.3 Atribuição
+
+1. **Estágio 1 — Shapley** entre E, f, s e P̄, termo a termo por procedimento (o valor de
+   Shapley de uma soma é a soma dos valores de Shapley). Como cada termo é um produto, o
+   efeito de cada fator é `Δx · m_x`, em que `m_x` é a média, sobre todas as ordens de
+   substituição, do produto dos demais fatores. **Com dois fatores é exatamente o Bennet**
+   (§4): a metodologia já aprovada é um caso particular desta.
+2. **Perfil etário × taxa:** `Δf = Σ_a Δe_a · r̄_a` (perfil) `+ resto` (taxa por faixa) — exato.
+3. **Estágio 2 — linear**, dentro de cada procedimento (o efeito de P̄ é `Q̄_p · ΔP̄_p`):
+   - **mix de prestadores** = `Σ_h Δw_h · (P_h,ref − P̄_ref)` — inclui prestadores que
+     entraram (ao seu preço) e que saíram; perder volume de um prestador barato também
+     encarece;
+   - **custo comparável** (mesmo procedimento e mesmo prestador nos dois períodos) =
+     `Σ_h ω_h · ΔP_h`, dividido em **intensidade** (`Δk · ū`) e **custo por unidade**
+     (`Δu · k̄`); este, quando há tabela vigente nos dois períodos, em **preço contratual**
+     (`ΔT · ρ̄`) e **custo unitário não explicado pela tabela** (`Δρ · T̄`).
+4. **Não comparável:** procedimentos presentes em só um período — valor explícito, nunca
+   redistribuído entre os demais efeitos.
+5. **Camada financeira:** `− Δglosa − Δcoparticipação` (linear) leva da bruta à líquida.
+
+```
+Δ líquida = população + perfil etário + frequência + mix de procedimentos
+          + mix de prestadores + intensidade + preço contratual
+          + custo unitário (sem evidência de tabela) + não comparável
+          − Δ glosa − Δ coparticipação                                  (exato)
+```
+
+**Unidade de frequência:** evento = 1 linha de `eventos_assistenciais` (item de conta).
+Eventos de tipos diferentes só são somados com o mix separado (é o que o efeito "mix de
+procedimentos" faz); o volume por tipo de atendimento é exibido à parte, cada tipo na sua
+unidade (consultas, internações, sessões...).
+
+**Participação (%):** sobre a variação observada; com muito cancelamento entre efeitos
+(|Δ| < 15% de Σ|efeitos|), sobre Σ|efeitos| — a mesma regra de `contribuicoes` (§3).
+
+### 13.4 O que o método NÃO afirma
+
+| Situação | O que aparece |
+|---|---|
+| Valor por unidade subiu, sem tabela de preço | "Aumento de custo unitário observado" (FATO, quantificado) + HIPÓTESE "reajuste não registrado ou mudança de cobrança" + o que verificar. **Nunca "reajuste".** |
+| Tabela com nova vigência | "Reajuste de tabela contratada" (FATO) com prestador, procedimento, valores e data |
+| Volume migrou entre prestadores | FATO quantificado + HIPÓTESE de mudança de rede — **o motivo não é presumido** |
+| Exposição indisponível no escopo | População e perfil "não calculado" (com motivo); "frequência" passa a medir volume de eventos |
+| Procedimentos novos/extintos | "Não comparável" (INVESTIGAR) — não vira preço nem volume |
+| < 30 eventos em algum período | Nenhuma HIPÓTESE; INVESTIGAR "dados insuficientes" |
+
+### 13.5 Baseline histórico (`baseline.comparar`)
+
+Valor da janela (média mensal) contra o período anterior de mesmo tamanho, a mesma janela
+do ano anterior e a **média das até 12 competências anteriores** (mínimo 6; abaixo disso a
+comparação é declarada insuficiente). Desvio padronizado `(atual − média)/(σ/√meses)`;
+excepcional se |z| ≥ 2. A sazonalidade (`seasonality.classificar`, §7) só reclassifica um
+desvio como "sazonal" com **≥ 24 meses** de histórico — com um único ano o fator do mês é
+uma observação, não um padrão. Cada saída traz período de referência, nº de competências,
+método e limitações.
+
+### 13.6 Rede, coortes, defasagem
+
+- **Rede:** transferências de participação (≥ 5 p.p.) entre prestadores do mesmo
+  procedimento; custo vs **mediana de pares do mesmo procedimento e do mesmo tipo** de
+  prestador (≥ 3 pares; razão ≥ 1,25 sinalizada). O detalhe do prestador ganhou o mesmo
+  histórico e a mesma comparação por procedimento.
+- **Coortes comportamentais** (partição exata da Δ líquida por beneficiário), definidas pelo
+  histórico das 6 competências ANTERIORES à base: alto custo histórico (5% maiores, com ≥ 20
+  beneficiários), uso recorrente (≥ 4 de 6 meses), esporádico e sem uso prévio. A conclusão
+  "recorrentes concentram a variação" exige ≥ 40% da variação, ≥ 1,5× o peso do grupo na
+  despesa da base e pouco cancelamento entre coortes. **Não há classificação clínica**:
+  condição crônica exige CID + regra validada (pendência de negócio).
+- **Defasagem:** partição exata da líquida entre atendimentos do próprio mês da competência
+  e atendimentos de meses anteriores (apresentação tardia).
+
+### 13.7 Conclusões (FATO / HIPÓTESE / INVESTIGAR)
+
+Cada conclusão traz indicador, período (base → atual), escopo, valores de referência e de
+comparação, contribuição (R$ e %) quando calculável, evidências, limitações, próximo passo
+e método. Regras de redação: decomposição = **contribuição** (FATO aritmético), nunca
+"causa"; HIPÓTESE sempre com o que verificar; nenhum texto vem de IA generativa.
+
+### 13.8 Testes
+
+- `tests/test_decomposicao_estrutural.py` — cenários matemáticos com resultado conhecido
+  (A–D do especialista, preço com/sem tabela, perfil etário, intensidade, prestador novo,
+  procedimento novo, camada financeira, 12 bases aleatórias, invariância de ordem).
+- `tests/test_cenarios_investigacao.py` — laboratório de 10 cenários (tenant `w2h-cenarios`).
+- `tests/test_investigacao.py` — reconciliação com a Gold na massa Vida Plena, cenários
+  s1/s7, API, gating, auditoria e isolamento entre tenants com os mesmos códigos.
+- `tests/test_pipeline_investigacao.py` — vínculo histórico e tabela de preço pelo
+  pipeline real.
+
+### 13.9 `explicar`: base dos fatores declarada
+
+Os fatores de `explicar` somam a variação de **Σ valor_pago** (bruta − glosa) e o topo usa
+a despesa **líquida**. A diferença é a Δ coparticipação. O bloco aditivo
+`reconciliacao_base` explicita isso (`Σ fatores − Δ coparticipação = Δ líquida`, com `ok`).
+
+---
+
+## 14. Consolidação do canônico V1 — receita, vínculo e escopos
+
+Ver [CONSOLIDACAO_CANONICO_V1.md](CONSOLIDACAO_CANONICO_V1.md) e
+[REGRAS_RECEITA_E_FATURAMENTO.md](REGRAS_RECEITA_E_FATURAMENTO.md).
+
+- **Receita da operadora:** uma fonte por competência (`fonte_receita` = reconhecida |
+  legada_plano | sem_receita); divergência entre fontes → `receita_status = divergente` e
+  `sinistralidade.indicador`/`serie` não publicam a sinistralidade da competência.
+- **Vínculo:** contrato/plano do evento = vínculo vigente na data, sem fallback para o
+  cadastro atual (chave `nao_atribuido` nas dimensões). Vidas e exposição (inclusive na
+  investigação: `investigacao_repo.SQL_EXPOSICAO`) pelo vínculo vigente no 1º dia da
+  competência — a limitação "exposição do contrato pelo vínculo atual" da §13 foi resolvida.
+- **Sinistralidade contratual / de empresa:** publicada só com receita reconhecida
+  identificada (ver REGRAS §6); nunca por rateio.
+- **Investigação (`/analytics/investigacao`):** novo escopo `empresa_id` (contratos da
+  empresa contratante em cada competência) e bloco `sinistralidade` (contrato, empresa ou
+  operadora): `S₀ → S₁`, efeito despesa + efeito receita (identidade exata, §2) e cada efeito
+  da decomposição estrutural em p.p. (`efeitos_despesa_pp`, soma = efeito despesa).
+  Indisponível → o motivo entra nas limitações; nada é estimado.

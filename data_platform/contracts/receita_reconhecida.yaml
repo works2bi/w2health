@@ -1,0 +1,151 @@
+entity: receita_reconhecida
+version: 1
+grain: "1 linha por lançamento de contraprestação reconhecida, no nível de atribuição que a origem permite"
+primary_key: [tenant_id, id_receita_reconhecida]
+business_keys:
+  - [tenant_id, competencia, source_record_id]
+load_strategy: COMPETENCIA_SNAPSHOT
+watermark_column: source_updated_at
+updated_at_column: source_updated_at
+deduplication_strategy: "business_key"
+fields:
+  - name: tenant_id
+    type: string
+    nullable: false
+    required_for: [ALL]
+    classification: internal
+    description: "Cliente."
+    example: "operadora-alfa"
+    typical_source: "constante"
+    transformation: "literal"
+    quality_rules: [tenant_id_ausente]
+  - name: id_receita_reconhecida
+    type: bigint
+    nullable: false
+    required_for: [contract_loss_ratio]
+    classification: internal
+    description: "Surrogate key."
+    example: 88
+    typical_source: "gerado"
+    transformation: "surrogate"
+    quality_rules: []
+  - name: source_record_id
+    type: string
+    nullable: false
+    required_for: [contract_loss_ratio]
+    classification: operational
+    description: "Identificador do lançamento na origem (chave com a competência)."
+    example: "RR-202604-0001"
+    typical_source: "contabilidade / faturamento"
+    transformation: "-"
+    quality_rules: []
+  - name: competencia
+    type: date
+    nullable: false
+    required_for: [loss_ratio, contract_loss_ratio]
+    classification: internal
+    description: "Competência de RECONHECIMENTO (cobertura) — a usada na sinistralidade."
+    example: "2026-04-01"
+    typical_source: "contabilidade"
+    transformation: "date_trunc('month', ...)"
+    quality_rules: [competencia_invalida]
+  - name: nivel_atribuicao
+    type: string
+    nullable: false
+    required_for: [contract_loss_ratio]
+    classification: internal
+    description: "DERIVADO no Silver: contrato_plano | contrato | empresa | nao_atribuida. Nunca informado pela origem."
+    example: "contrato_plano"
+    typical_source: "derivado"
+    transformation: "ver silver.atribuicao_receita"
+    quality_rules: []
+  - name: id_contrato
+    type: bigint
+    nullable: true
+    required_for: [contract_loss_ratio]
+    classification: internal
+    description: "Contrato (detalhado). Código sem cadastro → não atribuída (WARNING), nunca rejeitada."
+    example: 45
+    typical_source: "faturamento por contrato"
+    transformation: "lookup contrato.codigo"
+    quality_rules: [receita_sem_cadastro]
+  - name: id_plano
+    type: bigint
+    nullable: true
+    required_for: []
+    classification: internal
+    description: "Plano (par do contrato)."
+    example: 12
+    typical_source: "faturamento"
+    transformation: "lookup"
+    quality_rules: [plano_fora_do_contrato, receita_sem_cadastro]
+  - name: id_empresa
+    type: bigint
+    nullable: true
+    required_for: []
+    classification: internal
+    description: "Empresa, SÓ para cobrança consolidada SEM detalhamento por contrato."
+    example: 7
+    typical_source: "faturamento por empresa"
+    transformation: "lookup"
+    quality_rules: [receita_nivel_ambiguo, receita_sem_cadastro]
+  - name: natureza
+    type: string
+    nullable: false
+    required_for: []
+    classification: operational
+    description: "contraprestacao | ajuste | outro. Negativo só em ajuste."
+    example: "contraprestacao"
+    typical_source: "contabilidade"
+    transformation: "coalesce(origem, 'contraprestacao')"
+    quality_rules: [valor_negativo]
+  - name: numero_documento
+    type: string
+    nullable: true
+    required_for: []
+    classification: operational
+    description: "Documento de cobrança de origem. O mesmo documento não pode ter receita consolidada E detalhada."
+    example: "FAT-202603-EMP-002"
+    typical_source: "faturamento"
+    transformation: "-"
+    quality_rules: [receita_documento_duplicado]
+  - name: quantidade_beneficiarios
+    type: int
+    nullable: true
+    required_for: []
+    classification: operational
+    description: "Vidas da contraprestação."
+    example: 12
+    typical_source: "faturamento"
+    transformation: "-"
+    quality_rules: []
+  - name: receita_contraprestacao
+    type: numeric
+    nullable: false
+    required_for: [loss_ratio]
+    classification: operational
+    description: "Valor reconhecido."
+    example: 3600.0
+    typical_source: "contabilidade"
+    transformation: "-"
+    quality_rules: [valor_negativo]
+  - name: estimada
+    type: bool
+    nullable: false
+    required_for: []
+    classification: internal
+    description: "Reservado para alocação gerencial FUTURA (metodologia, versão, valor original). Sempre false nas cargas; o motor ignora linhas estimadas."
+    example: False
+    typical_source: "-"
+    transformation: "false"
+    quality_rules: []
+metadata_fields: [tenant_id, source_system, source_entity, source_record_id, ingestion_id,
+                  ingestion_timestamp, source_updated_at, reference_date, raw_payload_hash]
+notes: >
+  Consolidação do canônico V1 — substitui o layout `receita_contrato` (v1.2, nunca populado,
+  que admitia rateio como "metodologia"). RATEIO É PROIBIDO: receita de empresa sem
+  detalhamento fica no nível `empresa`; código sem cadastro, em `nao_atribuida` — ambas contam
+  na receita da operadora e NUNCA na sinistralidade de contrato. Fonte da receita da operadora
+  por competência: reconhecida, se existir; senão a legada (`receita`, competência × plano) —
+  nunca as duas somadas; divergência entre elas reprova a carga e bloqueia a sinistralidade da
+  competência. Ver docs/REGRAS_RECEITA_E_FATURAMENTO.md.

@@ -32,7 +32,11 @@ _SAMPLE = 5
 
 #: campos RECOMENDADOS cuja cobertura é reportada (INFO) — docs/DATA_CONTRACT.md
 COBERTURA = {
-    "evento_assistencial": ("valor_glosado", "valor_coparticipacao", "especialidade_codigo"),
+    "evento_assistencial": ("valor_glosado", "valor_coparticipacao", "especialidade_codigo",
+                            "estabelecimento_codigo", "prestador_solicitante_codigo"),
+    "preco_contratado": ("tipo_remuneracao", "vigencia_fim"),
+    "fatura": ("data_vencimento", "status"),
+    "receita_reconhecida": ("contrato_codigo", "plano_codigo", "numero_documento"),
     "beneficiario": ("data_saida", "sexo"),
     "procedimento": ("grupo_procedimento", "perfil_utilizacao"),
     "prestador": ("tipo_prestador",),
@@ -45,10 +49,33 @@ FKS = {
     "procedimento": {"especialidade_codigo": "especialidade"},
     "beneficiario": {"plano_codigo": "plano", "contrato_codigo": "contrato"},
     "receita": {"plano_codigo": "plano"},
+    "vinculo_beneficiario": {"beneficiario_codigo": "beneficiario",
+                             "contrato_codigo": "contrato", "plano_codigo": "plano"},
+    "preco_contratado": {"prestador_codigo": "prestador", "procedimento_codigo": "procedimento"},
+    "empresa_contrato": {"empresa_codigo": "empresa", "contrato_codigo": "contrato"},
+    "fatura": {"contrato_codigo": "contrato", "empresa_codigo": "empresa"},
+    "fatura_item": {"numero_documento": "fatura", "contrato_codigo": "contrato",
+                    "plano_codigo": "plano"},
+    "recebimento": {"numero_documento": "fatura"},
     "evento_assistencial": {"beneficiario_codigo": "beneficiario",
                             "prestador_codigo": "prestador",
                             "procedimento_codigo": "procedimento",
-                            "especialidade_codigo": "especialidade"},
+                            "especialidade_codigo": "especialidade",
+                            "estabelecimento_codigo": "prestador",
+                            "prestador_solicitante_codigo": "prestador"},
+}
+
+
+#: receita sem correspondência cadastral é PRESERVADA (nível 'nao_atribuida'), não rejeitada
+FKS_PRESERVA = {
+    "receita_reconhecida": {"contrato_codigo": "contrato", "plano_codigo": "plano",
+                            "empresa_codigo": "empresa"},
+}
+#: entidade com vigência → campos da chave (sobreposição verificada também contra o persistido)
+VIGENCIAS = {
+    "vinculo_beneficiario": ("beneficiario_codigo",),
+    "preco_contratado": ("prestador_codigo", "procedimento_codigo"),
+    "empresa_contrato": ("contrato_codigo", "papel"),
 }
 
 
@@ -135,7 +162,9 @@ def evaluate(mapping: Mapping, results: dict[str, EntityResult], files_present: 
     """Avalia todas as entidades (na ordem de carga) e decide o gate. Não escreve nada."""
     rules = _rules_module()
     report = QualityReport()
-    validos: dict[str, set] = {e: set(c) for e, c in existing_codes.items()}
+    vig_persistidas: dict[str, dict] = existing_codes.get("_vigencias", {})
+    niveis_doc: dict[str, set] = existing_codes.get("_receita_doc_niveis", {})
+    validos: dict[str, set] = {e: set(c) for e, c in existing_codes.items() if not e.startswith("_")}
 
     # arquivos obrigatórios / desconhecidos
     for em in mapping.entities:
@@ -193,14 +222,59 @@ def evaluate(mapping: Mapping, results: dict[str, EntityResult], files_present: 
                  falhas, len(rows))
             rejeitadas |= {r["_line"] for r in falhas}
 
-        # 3b. o plano do beneficiário tem de ser um plano do contrato dele (N:N)
-        if entity == "beneficiario":
+        # 3a. receita sem correspondência cadastral: PRESERVADA como não atribuída (WARNING)
+        sem_cadastro = [r for r in rows if any(
+            r.get(c) is not None and r.get(c) not in validos.get(alvo, set())
+            for c, alvo in FKS_PRESERVA.get(entity, {}).items())]
+        if sem_cadastro:
+            _add(report, "receita_sem_cadastro", WARNING, entity,
+                 "código de contrato/plano/empresa sem cadastro — receita preservada como "
+                 "NÃO ATRIBUÍDA (conta na operadora, nunca na sinistralidade de contrato)",
+                 sem_cadastro, len(rows))
+
+        # 3b. o plano do beneficiário (e de cada vínculo histórico / item atribuído) tem de
+        #     ser um plano do contrato dele (N:N)
+        if entity in ("beneficiario", "vinculo_beneficiario", "fatura_item", "receita_reconhecida"):
             pares = validos.get("plano_contrato", set())
+            ctrs, pls = validos.get("contrato", set()), validos.get("plano", set())
             fora = [r for r in rows if r["_line"] not in rejeitadas
+                    and r.get("contrato_codigo") in ctrs and r.get("plano_codigo") in pls
                     and (r.get("contrato_codigo"), r.get("plano_codigo")) not in pares]
             _add(report, "plano_fora_do_contrato", ERROR, entity,
                  "plano_codigo não é um plano do contrato_codigo (plano_contrato)", fora, len(rows))
             rejeitadas |= {r["_line"] for r in fora}
+
+        # 3c. vigência sobreposta com o JÁ PERSISTIDO (a mesma chave de negócio é um UPDATE)
+        if entity in VIGENCIAS and vig_persistidas.get(entity):
+            campos = VIGENCIAS[entity]
+            conflito = []
+            for r in rows:
+                if r["_line"] in rejeitadas or r.get("vigencia_inicio") is None:
+                    continue
+                ini, fim = r["vigencia_inicio"], r.get("vigencia_fim")
+                for p_ini, p_fim in vig_persistidas[entity].get(tuple(r.get(c) for c in campos), ()):
+                    if p_ini == ini:
+                        continue  # mesma vigência: atualização, não sobreposição
+                    if (fim is None or p_ini < fim) and (p_fim is None or ini < p_fim):
+                        conflito.append(r)
+                        break
+            _add(report, "vigencia_sobreposta", ERROR, entity,
+                 "vigência sobrepõe outra já carregada para a mesma chave", conflito, len(rows))
+            rejeitadas |= {r["_line"] for r in conflito}
+
+        # 3d. o mesmo documento não pode ter receita consolidada (empresa) E detalhada
+        if entity == "receita_reconhecida":
+            niveis: dict[str, set] = {k: set(v) for k, v in niveis_doc.items()}
+            for r in rows:
+                if r.get("numero_documento"):
+                    niveis.setdefault(r["numero_documento"], set()).add(
+                        "empresa" if r.get("empresa_codigo") and not r.get("contrato_codigo") else "detalhe")
+            ambos = {d for d, n in niveis.items() if len(n) > 1}
+            dup = [r for r in rows if r.get("numero_documento") in ambos]
+            _add(report, "receita_documento_duplicado", ERROR, entity,
+                 "documento com receita consolidada por empresa E detalhada por contrato — "
+                 "seria contada duas vezes", dup, len(rows))
+            rejeitadas |= {r["_line"] for r in dup}
 
         # 4. UF válida (região derivada de cidade/UF)
         if entity in ("beneficiario", "prestador"):
@@ -250,6 +324,8 @@ def evaluate(mapping: Mapping, results: dict[str, EntityResult], files_present: 
         elif entity == "plano_contrato":
             validos.setdefault(entity, set()).update(
                 (r["contrato_codigo"], r["plano_codigo"]) for r in validas)
+        elif entity == "fatura":
+            validos.setdefault(entity, set()).update(r["numero_documento"] for r in validas)
     return report
 
 
@@ -262,6 +338,12 @@ _DESCR = {
     "coparticipacao_acima_permitido": "coparticipação maior que o valor pago",
     "despesa_liquida_inconsistente": "despesa líquida inconsistente",
     "tenant_id_ausente": "linha sem tenant",
+    "vigencia_invertida": "fim de vigência anterior ou igual ao início",
+    "vigencia_sobreposta": "vigências sobrepostas para a mesma chave",
+    "preco_nao_positivo": "valor unitário contratado menor ou igual a zero",
+    "unidade_cobranca_inconsistente": "unidade de cobrança sem (ou com mais de um) código correspondente",
+    "fatura_total_inconsistente": "valor total do documento ≠ bruto − desconto + acréscimo",
+    "receita_nivel_ambiguo": "receita com contrato e empresa ao mesmo tempo",
 }
 
 

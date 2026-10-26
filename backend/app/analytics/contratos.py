@@ -1,10 +1,12 @@
-"""Contract Intelligence (v1.2) — visão consolidada por contrato.
+"""Contract Intelligence — visão consolidada por contrato.
 
-**Sem receita/sinistralidade próprias.** Receita por contrato depende de dado + regra de
-negócio ainda não validados (ver `docs/DISCOVERY_GESTAO_SAUDE.md`). Toda resposta traz
-`receita_disponivel: false` e um aviso explícito. O que existe: vidas, despesa
-(bruta/glosa/coparticipação/líquida), evolução, concentração (Gini/Pareto), beneficiários
-de maior impacto, drivers (decomposição com escopo de contrato) e alertas do contrato.
+v1.2: vidas, despesa (bruta/glosa/coparticipação/líquida), evolução, concentração,
+beneficiários de maior impacto, drivers e alertas do contrato.
+
+**Consolidação do canônico V1:** sinistralidade contratual SÓ quando a Gold a publicou —
+receita reconhecida ATRIBUÍDA ao contrato, competência sem divergência de receita e
+cobertura contratual suficiente (`agg_contrato_competencia.sinistralidade_liquida`). Sem
+isso: `receita_disponivel: false`, o motivo e o mesmo aviso de antes — nunca rateio.
 """
 
 from __future__ import annotations
@@ -30,6 +32,33 @@ def _f(x) -> float:
 
 def _pct(a: float, b: float) -> float | None:
     return round((a - b) / b * 100.0, 2) if abs(b) > 1e-9 else None
+
+
+MOTIVO_SEM_SINISTRALIDADE = {
+    "sem_receita_atribuida": "sem receita reconhecida atribuída ao contrato no período",
+    "receita_divergente": "receita da competência divergente entre fontes",
+    "receita_empresa_sem_detalhamento": "a empresa contratante tem receita consolidada sem "
+                                        "detalhamento na competência (pode conter parte deste "
+                                        "contrato) — não é rateada",
+}
+
+
+def sinistralidade_contratual(r: dict | None) -> dict:
+    """Bloco da sinistralidade de contrato a partir da linha da Gold (nada recalculado aqui)."""
+    if r is None:
+        return {"disponivel": False, "valor": None, "receita_reconhecida": None,
+                "motivo": "contrato sem dados na competência"}
+    s = r.get("sinistralidade_liquida")
+    motivo = r.get("motivo_sem_sinistralidade")
+    return {
+        "disponivel": s is not None,
+        "valor": round(float(s), 2) if s is not None else None,
+        "receita_reconhecida": round(float(r["receita_reconhecida"]), 2)
+        if r.get("receita_reconhecida") is not None else None,
+        "despesa_liquida": round(_f(r["despesa_liquida"]), 2),
+        "motivo": None if s is not None else MOTIVO_SEM_SINISTRALIDADE.get(motivo, motivo),
+        "formula": "despesa líquida atribuída ÷ receita reconhecida atribuída × 100",
+    }
 
 
 def listar(session: Session, competencia: date, comparacao: str = "mes_anterior") -> dict:
@@ -61,12 +90,15 @@ def listar(session: Session, competencia: date, comparacao: str = "mes_anterior"
             "n_beneficiarios_alto_custo": r["n_beneficiarios_alto_custo"],
             "variacao_despesa_liquida_pct": _pct(dliq, dliq_ant),
             "variacao_custo_pmpm_pct": _pct(pmpm, pmpm_ant),
+            "empresa": {"id": r["id_empresa"], "nome": r["empresa"]} if r.get("id_empresa") else None,
+            "sinistralidade_contratual": sinistralidade_contratual(r),
         })
+    com_receita = any(i["sinistralidade_contratual"]["receita_reconhecida"] for i in itens)
     return {
         "competencia": competencia.isoformat(),
         "comparacao": comparacao,
-        "receita_disponivel": False,
-        "aviso": _AVISO,
+        "receita_disponivel": com_receita,
+        "aviso": None if com_receita else _AVISO,
         "total": len(itens),
         "itens": itens,
     }
@@ -106,6 +138,10 @@ def detalhe(
             "custo_pmpm": round(_f(r["custo_pmpm"]), 2),
             "eventos": r["eventos"],
             "gini": round(_f(r["gini"]), 4),
+            "receita_reconhecida": round(float(r["receita_reconhecida"]), 2)
+            if r.get("receita_reconhecida") is not None else None,
+            "sinistralidade_liquida": round(float(r["sinistralidade_liquida"]), 2)
+            if r.get("sinistralidade_liquida") is not None else None,
         }
         for r in repo.contrato_serie(session, id_contrato)
     ]
@@ -156,8 +192,9 @@ def detalhe(
         },
         "competencia": competencia.isoformat(),
         "comparacao": comparacao,
-        "receita_disponivel": False,
-        "aviso": _AVISO,
+        "receita_disponivel": bool(atual.get("receita_reconhecida")),
+        "aviso": None if atual.get("receita_reconhecida") else _AVISO,
+        "sinistralidade_contratual": sinistralidade_contratual(atual),
         "kpis": {
             "vidas": atual["vidas"],
             "despesa_bruta": round(_f(atual["despesa_bruta"]), 2),

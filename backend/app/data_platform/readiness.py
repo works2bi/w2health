@@ -23,10 +23,12 @@ from app.models import (
     Beneficiario,
     CapabilityReadiness,
     Contrato,
+    EmpresaContrato,
     EventoAssistencial,
     Prestador,
     Procedimento,
     Receita,
+    ReceitaReconhecida,
 )
 
 READY, PARTIAL, NOT_READY = "READY", "PARTIAL", "NOT_READY"
@@ -34,7 +36,9 @@ READY, PARTIAL, NOT_READY = "READY", "PARTIAL", "NOT_READY"
 #: rótulos legíveis dos sinais de dados
 SIGNAL_LABEL = {
     "eventos": "eventos assistenciais",
-    "receita": "receita (competência × plano)",
+    "receita": "receita (legada por plano ou reconhecida)",
+    "receita_contratual": "receita reconhecida atribuída a contratos",
+    "empresas": "empresas associadas a contratos",
     "beneficiarios": "beneficiários",
     "contratos": "contratos com beneficiários vinculados",
     "prestadores": "prestadores",
@@ -51,7 +55,9 @@ REQUIREMENTS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "loss_ratio_intelligence": (("eventos", "receita", "gold"), ()),
     "financial_composition": (("eventos", "receita", "gold"), ("glosa", "coparticipacao")),
     "advanced_explanations": (("eventos", "beneficiarios", "gold"), ("saida_carteira", "perfil_utilizacao")),
-    "contract_intelligence": (("eventos", "beneficiarios", "contratos", "gold"), ()),
+    # Consolidação V1: sem receita contratual o módulo funciona (vidas, despesa,
+    # concentração) — só a sinistralidade de contrato fica indisponível → PARTIAL
+    "contract_intelligence": (("eventos", "beneficiarios", "contratos", "gold"), ("receita_contratual",)),
     "provider_intelligence": (("eventos", "prestadores", "gold"), ()),
     "beneficiary_intelligence": (("eventos", "beneficiarios", "gold"), ()),
     "insights": (("eventos", "receita", "gold"), ()),
@@ -81,7 +87,15 @@ def signals(session: Session, tenant_id: str) -> dict[str, bool]:
     return {
         "eventos": _exists(session, ev),
         "receita": _exists(session, select(Receita.id).where(
-            Receita.tenant_id == tenant_id, Receita.receita_contraprestacao > 0)),
+            Receita.tenant_id == tenant_id, Receita.receita_contraprestacao > 0))
+        or _exists(session, select(ReceitaReconhecida.id).where(
+            ReceitaReconhecida.tenant_id == tenant_id, ~ReceitaReconhecida.estimada,
+            ReceitaReconhecida.receita_contraprestacao > 0)),
+        "receita_contratual": _exists(session, select(ReceitaReconhecida.id).where(
+            ReceitaReconhecida.tenant_id == tenant_id, ~ReceitaReconhecida.estimada,
+            ReceitaReconhecida.nivel_atribuicao.in_(("contrato_plano", "contrato")))),
+        "empresas": _exists(session, select(EmpresaContrato.id).where(
+            EmpresaContrato.tenant_id == tenant_id)),
         "beneficiarios": _exists(session, select(Beneficiario.id).where(Beneficiario.tenant_id == tenant_id)),
         "contratos": _exists(session, select(Contrato.id).where(Contrato.tenant_id == tenant_id))
                      and _exists(session, select(Beneficiario.id).where(

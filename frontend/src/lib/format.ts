@@ -81,6 +81,7 @@ export const LABEL_EVIDENCIA: Record<string, string> = {
   FATO: "Fato",
   HIPOTESE: "Hipótese",
   A_INVESTIGAR: "A investigar",
+  INVESTIGAR: "Investigar",
 };
 
 export const LABEL_CONFIANCA: Record<string, string> = {
@@ -94,6 +95,7 @@ export const corEvidencia = (tipo: string): string =>
     FATO: "bg-slate-100 text-slate-800 border-slate-300",
     HIPOTESE: "bg-amber-50 text-amber-800 border-amber-300 border-dashed",
     A_INVESTIGAR: "bg-slate-50 text-slate-400 border-slate-200 border-dotted",
+    INVESTIGAR: "bg-sky-50 text-sky-800 border-sky-300",
   })[tipo] ?? "bg-slate-100 text-slate-700 border-slate-200";
 
 export const LABEL_EFEITO: Record<string, string> = {

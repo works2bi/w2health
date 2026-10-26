@@ -34,6 +34,17 @@ qualquer `ERROR`.
 | `receita_duplicada` | receita | WARNING | `(competencia, id_plano)` repetido |
 | `despesa_liquida_inconsistente` | evento | WARNING | `\|despesa_liquida − (bruta − glosa − copart)\| > 0,01` (será recalculada na Gold) |
 | `coparticipacao_acima_permitido` | evento | WARNING | `valor_coparticipacao` > `valor_pago` |
+| `vigencia_invertida` | preco_contratado, vinculo_beneficiario | ERROR | `vigencia_fim` ≤ `vigencia_inicio` (Evolução V1) |
+| `vigencia_sobreposta` | preco_contratado, vinculo_beneficiario | ERROR | duas vigências da mesma chave se sobrepõem no lote (Evolução V1) — a sobreposição com cargas anteriores não é verificada nesta versão |
+| `preco_nao_positivo` | preco_contratado | ERROR | `valor_unitario` ≤ 0 (Evolução V1) |
+| `plano_fora_do_contrato` | beneficiario, vinculo_beneficiario, fatura_item, receita_reconhecida | ERROR | o plano não é oferecido pelo contrato (`plano_contrato`) |
+| `vigencia_sobreposta` (persistido) | vinculo, preço, empresa_contrato | ERROR | Consolidação V1: sobreposição também contra o JÁ carregado (mesma `vigencia_inicio` = atualização) |
+| `unidade_cobranca_inconsistente` | fatura | ERROR | unidade `contrato`/`empresa` sem (ou com os dois) códigos |
+| `fatura_total_inconsistente` | fatura | ERROR | `valor_total ≠ bruto − desconto + acréscimo` |
+| `receita_nivel_ambiguo` | receita_reconhecida | ERROR | contrato e empresa ao mesmo tempo |
+| `receita_documento_duplicado` | receita_reconhecida | ERROR | mesmo documento consolidado (empresa) E detalhado (contrato) — no lote ou com o persistido |
+| `receita_sem_cadastro` | receita_reconhecida | WARNING | código sem cadastro → preservada como **não atribuída** (não rejeitada) |
+| `valor_negativo` (exceções) | evento, fatura_item, receita_reconhecida | ERROR | Consolidação V1: negativo admitido só em estorno/ajuste/cancelamento (evento), desconto/ajuste/retroativo (item), ajuste (receita) |
 
 ## Onde os resultados ficam
 

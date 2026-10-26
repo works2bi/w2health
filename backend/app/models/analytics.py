@@ -74,6 +74,15 @@ class AggSinistralidadeCompetencia(TenantMixin, Base):
     eventos: Mapped[int] = mapped_column(Integer, default=0)
     custo_pmpm: Mapped[float] = mapped_column(Float, default=0.0)
     receita_media_beneficiario: Mapped[float] = mapped_column(Float, default=0.0)
+    # Consolidação V1 — de onde veio a receita da competência (NUNCA a soma das fontes):
+    # reconhecida | legada_plano | sem_receita; `receita_status` = ok | divergente
+    fonte_receita: Mapped[str | None] = mapped_column(String(14), nullable=True)
+    receita_status: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    receita_legada: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    receita_atribuida_contrato: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    receita_empresa_nao_detalhada: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    receita_nao_atribuida: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    cobertura_receita_contratual: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class AggCompetenciaDimensao(TenantMixin, Base):
@@ -182,6 +191,11 @@ class AggContratoCompetencia(TenantMixin, Base):
     gini: Mapped[float] = mapped_column(Float, default=0.0)  # sobre despesa líquida por beneficiário
     top5_share: Mapped[float] = mapped_column(Float, default=0.0)  # fração nos 5 maiores
     n_beneficiarios_alto_custo: Mapped[int] = mapped_column(Integer, default=0)
+    # Consolidação V1 — receita RECONHECIDA atribuída ao contrato e sinistralidade contratual
+    # (nula + motivo quando a cobertura não permite; nunca por rateio)
+    receita_reconhecida: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sinistralidade_liquida: Mapped[float | None] = mapped_column(Float, nullable=True)
+    motivo_sem_sinistralidade: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
 class CenarioGabarito(TenantMixin, Base):

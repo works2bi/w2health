@@ -1,0 +1,88 @@
+entity: empresa_contrato
+version: 1
+grain: "1 linha por período de associação de uma empresa a um contrato num papel"
+primary_key: [tenant_id, id_empresa_contrato]
+business_keys:
+  - [tenant_id, contrato_codigo, papel, vigencia_inicio]
+load_strategy: UPSERT
+watermark_column: source_updated_at
+updated_at_column: source_updated_at
+deduplication_strategy: "business_key"
+fields:
+  - name: tenant_id
+    type: string
+    nullable: false
+    required_for: [ALL]
+    classification: internal
+    description: "Cliente."
+    example: "operadora-alfa"
+    typical_source: "constante"
+    transformation: "literal"
+    quality_rules: [tenant_id_ausente]
+  - name: id_empresa_contrato
+    type: bigint
+    nullable: false
+    required_for: [contract]
+    classification: internal
+    description: "Surrogate key."
+    example: 31
+    typical_source: "gerado"
+    transformation: "surrogate"
+    quality_rules: []
+  - name: id_empresa
+    type: bigint
+    nullable: false
+    required_for: [contract]
+    classification: internal
+    description: "FK empresa."
+    example: 7
+    typical_source: "cadastro comercial"
+    transformation: "lookup empresa.codigo -> id_empresa"
+    quality_rules: [fk_inexistente_empresa_codigo]
+  - name: id_contrato
+    type: bigint
+    nullable: false
+    required_for: [contract]
+    classification: internal
+    description: "FK contrato."
+    example: 45
+    typical_source: "cadastro comercial"
+    transformation: "lookup contrato.codigo -> id_contrato"
+    quality_rules: [fk_inexistente_contrato_codigo]
+  - name: papel
+    type: string
+    nullable: false
+    required_for: [contract]
+    classification: operational
+    description: "contratante | estipulante | administradora | subestipulante. Vazio = contratante. Só 'contratante' agrupa receita/despesa."
+    example: "contratante"
+    typical_source: "cadastro comercial"
+    transformation: "coalesce(origem, 'contratante')"
+    quality_rules: []
+  - name: vigencia_inicio
+    type: date
+    nullable: false
+    required_for: [contract]
+    classification: operational
+    description: "Início (inclusive)."
+    example: "2025-01-01"
+    typical_source: "cadastro comercial"
+    transformation: "-"
+    quality_rules: [vigencia_sobreposta]
+  - name: vigencia_fim
+    type: date
+    nullable: true
+    required_for: []
+    classification: operational
+    description: "Fim (EXCLUSIVO). Vazio = vigente."
+    example: null
+    typical_source: "cadastro comercial"
+    transformation: "-"
+    quality_rules: [vigencia_invertida, vigencia_sobreposta]
+metadata_fields: [tenant_id, source_system, source_entity, source_record_id, ingestion_id,
+                  ingestion_timestamp, source_updated_at, reference_date, raw_payload_hash]
+notes: >
+  OPCIONAL. Regra: no máximo UMA empresa por contrato e papel em cada data — vigências da mesma
+  (contrato, papel) não se sobrepõem, verificado no lote E contra o já carregado. Mais de uma
+  contratante simultânea é pendência de negócio (rejeitada até haver regra), o que garante que
+  nenhum contrato conte em duas empresas.

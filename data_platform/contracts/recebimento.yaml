@@ -1,0 +1,85 @@
+entity: recebimento
+version: 1
+grain: "1 linha por baixa/pagamento recebido de um documento"
+primary_key: [tenant_id, id_recebimento]
+business_keys:
+  - [tenant_id, numero_recebimento]
+load_strategy: UPSERT
+watermark_column: source_updated_at
+updated_at_column: source_updated_at
+deduplication_strategy: "business_key"
+fields:
+  - name: tenant_id
+    type: string
+    nullable: false
+    required_for: [ALL]
+    classification: internal
+    description: "Cliente."
+    example: "operadora-alfa"
+    typical_source: "constante"
+    transformation: "literal"
+    quality_rules: [tenant_id_ausente]
+  - name: id_recebimento
+    type: bigint
+    nullable: false
+    required_for: [financial]
+    classification: internal
+    description: "Surrogate key."
+    example: 701
+    typical_source: "gerado"
+    transformation: "surrogate"
+    quality_rules: []
+  - name: numero_recebimento
+    type: string
+    nullable: false
+    required_for: [financial]
+    classification: operational
+    description: "Identificador da baixa na origem."
+    example: "BX-000991"
+    typical_source: "contas a receber"
+    transformation: "-"
+    quality_rules: []
+  - name: id_fatura
+    type: bigint
+    nullable: true
+    required_for: []
+    classification: internal
+    description: "Documento quitado (quando identificado)."
+    example: 9001
+    typical_source: "contas a receber"
+    transformation: "lookup numero_documento"
+    quality_rules: [fk_inexistente_numero_documento]
+  - name: data_recebimento
+    type: date
+    nullable: false
+    required_for: [financial]
+    classification: operational
+    description: "Data do crédito."
+    example: "2026-04-10"
+    typical_source: "contas a receber"
+    transformation: "-"
+    quality_rules: []
+  - name: competencia_recebimento
+    type: date
+    nullable: false
+    required_for: [financial]
+    classification: internal
+    description: "Competência de RECEBIMENTO (mês de data_recebimento se ausente)."
+    example: "2026-04-01"
+    typical_source: "contas a receber"
+    transformation: "date_trunc('month', data_recebimento)"
+    quality_rules: []
+  - name: valor_recebido
+    type: numeric
+    nullable: false
+    required_for: [financial]
+    classification: operational
+    description: "Valor recebido (≥ 0)."
+    example: 12000.0
+    typical_source: "contas a receber"
+    transformation: "-"
+    quality_rules: [valor_negativo]
+metadata_fields: [tenant_id, source_system, source_entity, source_record_id, ingestion_id,
+                  ingestion_timestamp, source_updated_at, reference_date, raw_payload_hash]
+notes: >
+  OPCIONAL. Caixa — informativo frente ao faturado e ao reconhecido; não entra na sinistralidade.

@@ -37,7 +37,12 @@ def test_lista_de_tabelas_da_migration_bate_com_metadata():
     fase1 = _tuple_from_migration("e8b9c0d1f2a3_v1_saas_rls_e_papel_de_runtime.py", "DATA_PLANE_TABLES")
     fase2 = _tuple_from_migration("f4c5d6e7a8b9_fase2_data_platform_operacional.py", "NEW_DATA_PLANE_TABLES")
     n_para_n = _tuple_from_migration("c9d0e1f2a3b4_plano_contrato_n_para_n.py", "NEW_DATA_PLANE_TABLES")
-    assert fase1 | fase2 | n_para_n == esperado
+    investigacao = _tuple_from_migration("d0e1f2a3b4c5_investigacao_custos_modelo.py",
+                                         "NEW_DATA_PLANE_TABLES")
+    consolidacao = _tuple_from_migration("e1f2a3b4c5d6_consolidacao_canonico_financeiro.py",
+                                         "NEW_DATA_PLANE_TABLES")
+    renomeadas = {"receitas_contrato"}  # → receitas_reconhecidas (está em `consolidacao`)
+    assert (fase1 - renomeadas) | fase2 | n_para_n | investigacao | consolidacao == esperado
     assert _tuple_from_migration("c7a1e2b3d4f5_v1_saas_control_plane.py", "DATA_PLANE_TABLES") == fase1
     controle_fase1 = _tuple_from_migration("e8b9c0d1f2a3_v1_saas_rls_e_papel_de_runtime.py",
                                            "CONTROL_PLANE_TABLES")

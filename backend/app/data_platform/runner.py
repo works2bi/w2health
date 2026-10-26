@@ -459,7 +459,10 @@ def _transform_and_publish(meta: _Meta, ctx: PipelineContext, mapping: Mapping, 
 
     # 5. publicação transacional: Silver → Gold → readiness → reconciliação ---------
     validas = {e: q.valid_rows for e, q in report.entities.items()}
-    meses = {r["competencia"] for e in ("evento_assistencial", "receita") for r in validas.get(e, [])}
+    meses = {r["competencia"] for e in ("evento_assistencial", "receita", "receita_reconhecida")
+             for r in validas.get(e, [])}
+    meses |= {r["competencia_faturamento"] for r in validas.get("fatura", [])}
+    meses |= {r["competencia_recebimento"] for r in validas.get("recebimento", [])}
     ref_inicio = min(meses) if meses else date.today().replace(day=1)
     ref_fim = max(meses) if meses else date.today().replace(day=1)
     t0 = time.perf_counter()
@@ -474,6 +477,10 @@ def _transform_and_publish(meta: _Meta, ctx: PipelineContext, mapping: Mapping, 
             "prestador": loader.prestadores,
             "procedimento": loader.procedimentos,
             "beneficiario": lambda rows: loader.beneficiarios(rows, ref_inicio, ref_fim),
+            "vinculo_beneficiario": loader.vinculos, "preco_contratado": loader.precos,
+            "empresa": loader.empresas, "empresa_contrato": loader.empresas_contratos,
+            "fatura": loader.faturas, "fatura_item": loader.fatura_itens,
+            "recebimento": loader.recebimentos, "receita_reconhecida": loader.receitas_reconhecidas,
             "receita": loader.receitas, "evento_assistencial": loader.eventos,
         }
         for entidade in LOAD_ORDER:
@@ -498,6 +505,8 @@ def _transform_and_publish(meta: _Meta, ctx: PipelineContext, mapping: Mapping, 
             rejected={e: len(q.rejected_lines) for e, q in report.entities.items()},
             duplicates={e: q.duplicates_removed for e, q in report.entities.items()},
             fin_tol=mapping.financial_tolerance_abs, count_tol=mapping.count_tolerance_abs)
+        # Consolidação V1 — reconciliação financeira (receita, despesa, vidas) dos meses da carga
+        checks += reconciliation.financeiro(data_s, sorted(meses))
         resultado = reconciliation.overall(checks)
         summary.reconciliation = resultado
         _persist_recon(meta, ctx, checks)

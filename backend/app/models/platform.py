@@ -1,4 +1,4 @@
-"""Data Platform — modelo de controle de ingestão e o layout `receitas_contrato`.
+"""Data Platform — modelo de controle de ingestão.
 
 **Fase 2: em uso.** `source_connections`, `ingestion_runs`, `raw_objects`, `pipeline_runs`,
 `data_quality_results`, `reconciliation_results` e `capability_readiness` são os metadados
@@ -6,9 +6,8 @@ operacionais da Data Platform (`app/data_platform/`). Todas tenant-scoped + RLS.
 
 `Tenant` é o cadastro de clientes — pertence ao **control plane** (`ControlBase`) desde a
 Fundação SaaS V1. As demais tabelas (data plane) rastreiam cargas por tenant.
-`ReceitaContrato` é o **layout preparado** para receita no grão de contrato — criado e
-documentado, mas **não populado nem lido pelo motor** nesta versão (receita por contrato
-depende de regra de negócio ainda não validada — ver `docs/DISCOVERY_GESTAO_SAUDE.md`).
+O antigo layout `receitas_contrato` virou `receitas_reconhecidas` em `app/models/financeiro.py`
+(Consolidação do canônico V1).
 """
 
 from __future__ import annotations
@@ -275,29 +274,3 @@ class CapabilityReadiness(TenantMixin, Base):
     checks: Mapped[dict] = mapped_column(JSON, default=dict)
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-
-class ReceitaContrato(TenantMixin, Base):
-    """Layout preparado para receita no grão de contrato. **Não populado / não lido na v1.2.**
-
-    Existe para que os conectores futuros já tenham um alvo canônico e para que
-    `docs/CANONICAL_DATA_MODEL.md` / `data_platform/contracts/receita_contrato.yaml`
-    tenham um espelho no ORM. Sinistralidade por contrato depende deste dado + de regra
-    de negócio validada (fora do escopo da v1.2).
-    """
-
-    __tablename__ = "receitas_contrato"
-    __table_args__ = (
-        UniqueConstraint(
-            "tenant_id", "competencia", "id_contrato", name="uq_recctr_tenant_comp_ctr"
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    competencia: Mapped[date] = mapped_column(Date, index=True)
-    id_contrato: Mapped[int] = mapped_column(ForeignKey("contratos.id"), index=True)
-    quantidade_beneficiarios: Mapped[int] = mapped_column(Integer, default=0)
-    receita_contraprestacao: Mapped[Decimal] = mapped_column(Numeric(16, 2), default=0)
-    reajuste_aplicado_no_periodo: Mapped[Decimal | None] = mapped_column(
-        Numeric(6, 4), nullable=True
-    )
-    metodologia: Mapped[str | None] = mapped_column(String(40), nullable=True)  # informativo

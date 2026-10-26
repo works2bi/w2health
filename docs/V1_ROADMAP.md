@@ -18,6 +18,26 @@
 | CI com testes, lint, migrations, audit, imagens | `.github/workflows/ci.yml` |
 | Preparação para pentest, LGPD técnica, resposta a incidentes | [PENTEST_READINESS.md](PENTEST_READINESS.md), [LGPD_TECHNICAL_CONTROLS.md](LGPD_TECHNICAL_CONTROLS.md), [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) |
 
+## Concluído — Evolução V1: investigação de custos (23/10/2026)
+
+Decomposição estrutural que reconcilia (população, perfil etário, frequência, mix de
+procedimentos, mix de prestadores, intensidade, preço contratual, custo unitário não
+explicado, não comparável, glosa, coparticipação), baseline histórico, rede, coortes
+comportamentais, defasagem e conclusões FATO/HIPÓTESE/INVESTIGAR; vínculo da competência e
+tabela de preço no modelo canônico. Ver
+[EVOLUCAO_V1_INVESTIGACAO_CUSTOS.md](EVOLUCAO_V1_INVESTIGACAO_CUSTOS.md). Pendências de
+negócio dessa evolução (empresa/faturamento, condição crônica) estão no §8 daquele documento.
+
+## Concluído — Consolidação do canônico V1 (23/10/2026)
+
+Empresa e associação histórica com contratos; faturamento (documento, itens), recebimento e
+receita reconhecida por nível de atribuição — sem rateio; fonte única de receita por
+competência com bloqueio em divergência; atribuição estrita do evento ao vínculo vigente;
+vidas históricas; sinistralidade contratual e de empresa só com receita identificada;
+reconciliação financeira no gate do pipeline. Layout **candidato** (não homologado — ver
+divergências em [MODELO_CANONICO_V1_OFICIAL_CANDIDATO.md](MODELO_CANONICO_V1_OFICIAL_CANDIDATO.md)).
+Relatório: [CONSOLIDACAO_CANONICO_V1.md](CONSOLIDACAO_CANONICO_V1.md).
+
 ## P0 — ainda bloqueia cliente real em PRODUÇÃO
 
 | Item | Por quê | Tipo |
@@ -63,7 +83,7 @@
 
 ## DISCOVERY — ainda não implementar
 
-Reajuste contratual · receita por contrato e sinistralidade contratual · "sinistralidade
+Reajuste contratual · alocação gerencial de receita (rateio declarado) · "sinistralidade
 individual" · previsão, ML e projeções · LLM/chatbot · conectores MV/Tasy/Benner/Datasul/TISS ·
 Data Lake físico, Kafka, Kubernetes, service mesh, microserviços, Airflow, Spark, Databricks,
 Data Mesh · funcionalidades clínicas.

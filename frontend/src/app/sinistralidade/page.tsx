@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { CausasPanel } from "@/components/CausasPanel";
 import { CompositionCard } from "@/components/CompositionCard";
+import { InvestigacaoPanel } from "@/components/InvestigacaoPanel";
+import { ReceitaCard } from "@/components/ReceitaCard";
 import { ConcentracaoBeneficiariosCard } from "@/components/ConcentracaoBeneficiariosCard";
 import { MiniSeries, WaterfallChart } from "@/components/charts";
 import { KpiInfo } from "@/components/KpiInfo";
@@ -123,6 +125,8 @@ export default function SinistralidadePage() {
 
       {!emContrato && <CompositionCard />}
 
+      {!emContrato && <ReceitaCard />}
+
       {ind.data?.decomposicao_receita_despesa && (
         <Card title="A variação (líquida) veio de despesa ou de receita?">
           <div className="flex flex-wrap items-center gap-6">
@@ -145,6 +149,9 @@ export default function SinistralidadePage() {
           </div>
         </Card>
       )}
+
+      {/* Evolução V1 — investigação do escopo inteiro (operadora ou contrato filtrado) */}
+      {!chave && <InvestigacaoPanel />}
 
       <Card
         title="Contribuição por dimensão"
@@ -281,6 +288,12 @@ function DrillPanel({
           <MiniSeries serie={drill.serie} dataKey="despesa" />
         </div>
       </Card>
+
+      <InvestigacaoPanel
+        dimensao={dimensao}
+        chave={drill.fator.chave}
+        titulo={`Por que a despesa de ${drill.fator.categoria} mudou?`}
+      />
 
       <CausasPanel dimensao={dimensao} chave={drill.fator.chave} categoria={drill.fator.categoria} />
 

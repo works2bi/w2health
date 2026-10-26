@@ -1,0 +1,4 @@
+nr_documento;nr_item;natureza;cod_contrato;cod_plano;competencia_ref;qtd_vidas;vl_item
+FAT-202604-CT001;1;mensalidade;CT-001;PL-ESSENCIAL;2026-04;6;1800,00
+FAT-202604-CT001;2;mensalidade;CT-001;PL-SUPERIOR;2026-04;4;2000,00
+FAT-202604-CT001;J;acrescimo;CT-001;;2026-04;;15,00

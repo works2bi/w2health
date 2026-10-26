@@ -1,0 +1,100 @@
+entity: vinculo_beneficiario
+version: 1
+grain: "1 linha por período de vínculo de um beneficiário a um contrato/plano"
+primary_key: [tenant_id, id_vinculo]
+business_keys:
+  - [tenant_id, beneficiario_codigo, vigencia_inicio]
+load_strategy: UPSERT
+watermark_column: source_updated_at
+updated_at_column: source_updated_at
+deduplication_strategy: "business_key"
+fields:
+  - name: tenant_id
+    type: string
+    nullable: false
+    required_for: [ALL]
+    classification: internal
+    description: "Cliente."
+    example: "operadora-alfa"
+    typical_source: "constante"
+    transformation: "literal"
+    quality_rules: [tenant_id_ausente]
+  - name: id_vinculo
+    type: bigint
+    nullable: false
+    required_for: [contract]
+    classification: internal
+    description: "Surrogate key."
+    example: 9012
+    typical_source: "gerado"
+    transformation: "surrogate"
+    quality_rules: []
+  - name: id_beneficiario
+    type: bigint
+    nullable: false
+    required_for: [contract]
+    classification: internal
+    description: "FK beneficiário."
+    example: 84213
+    typical_source: "cadastro de beneficiários (histórico de movimentação)"
+    transformation: "lookup beneficiario.codigo -> id_beneficiario"
+    quality_rules: [fk_inexistente_beneficiario_codigo]
+  - name: id_contrato
+    type: bigint
+    nullable: false
+    required_for: [contract]
+    classification: internal
+    description: "FK contrato no período."
+    example: 45
+    typical_source: "histórico de movimentação cadastral"
+    transformation: "lookup contrato.codigo -> id_contrato"
+    quality_rules: [fk_inexistente_contrato_codigo]
+  - name: id_plano
+    type: bigint
+    nullable: false
+    required_for: [contract]
+    classification: internal
+    description: "FK plano no período — tem de ser um plano do contrato (plano_contrato)."
+    example: 12
+    typical_source: "histórico de movimentação cadastral"
+    transformation: "lookup plano.codigo -> id_plano"
+    quality_rules: [fk_inexistente_plano_codigo, plano_fora_do_contrato]
+  - name: vigencia_inicio
+    type: date
+    nullable: false
+    required_for: [contract]
+    classification: operational
+    description: "Início do vínculo (inclusive)."
+    example: "2025-03-01"
+    typical_source: "movimentação cadastral"
+    transformation: "-"
+    quality_rules: [vigencia_sobreposta]
+  - name: vigencia_fim
+    type: date
+    nullable: true
+    required_for: []
+    classification: operational
+    description: "Fim do vínculo (EXCLUSIVO). Vazio = vigente."
+    example: null
+    typical_source: "movimentação cadastral"
+    transformation: "-"
+    quality_rules: [vigencia_invertida, vigencia_sobreposta]
+  - name: situacao
+    type: string
+    nullable: true
+    required_for: []
+    classification: operational
+    description: "ativo | suspenso | cancelado. Vazio = ativo. Exposição (vidas) conta só ativo — 'suspenso' como exposição é pendência de negócio (Consolidação V1)."
+    example: "ativo"
+    typical_source: "movimentação cadastral"
+    transformation: "normalizar"
+    quality_rules: []
+metadata_fields: [tenant_id, source_system, source_entity, source_record_id, ingestion_id,
+                  ingestion_timestamp, source_updated_at, reference_date, raw_payload_hash]
+notes: >
+  OPCIONAL (Evolução V1). Quando informado, o Silver grava em CADA evento o contrato/plano
+  vigente na data do atendimento (evento_assistencial.id_contrato/id_plano). Beneficiário COM
+  histórico e sem vigência na data → evento NÃO ATRIBUÍDO. Sem histórico, o cadastro vale
+  como vínculo único de data_adesao a data_saida (exclusiva). Vidas por contrato também pelo
+  vínculo vigente no 1º dia da competência (Consolidação V1). Sobreposição verificada no
+  lote e contra o já carregado.

@@ -54,11 +54,21 @@ fields:
     nullable: true
     required_for: [contract]
     classification: internal
-    description: "FK contrato (normalmente derivada do beneficiário na data do evento)."
+    description: "FK contrato VIGENTE NA DATA DO EVENTO — congelado na carga (Evolução V1). Uma troca posterior de contrato não reclassifica a despesa."
     example: 45
     typical_source: "derivado de beneficiário × vigência"
-    transformation: "lookup beneficiário.id_contrato (ou histórico de vínculo, se disponível)"
+    transformation: "vinculo_beneficiario vigente em data_evento; sem histórico, beneficiário.id_contrato no momento da carga"
     quality_rules: [contrato_inexistente]
+  - name: id_plano
+    type: bigint
+    nullable: true
+    required_for: [contract]
+    classification: internal
+    description: "FK plano vigente na data do evento — mesma regra de id_contrato (Evolução V1)."
+    example: 12
+    typical_source: "derivado de beneficiário × vigência"
+    transformation: "vinculo_beneficiario vigente em data_evento; sem histórico, beneficiário.id_plano"
+    quality_rules: []
   - name: id_prestador
     type: bigint
     nullable: false
@@ -69,6 +79,26 @@ fields:
     typical_source: "conta"
     transformation: "lookup por codigo do prestador"
     quality_rules: [prestador_inexistente]
+  - name: id_estabelecimento
+    type: bigint
+    nullable: true
+    required_for: []
+    classification: internal
+    description: "FK prestador onde o atendimento ocorreu (hospital, clínica...). Opcional — id_prestador segue sendo o EXECUTANTE (Evolução V1)."
+    example: 3001
+    typical_source: "conta / guia (local de atendimento, CNES)"
+    transformation: "lookup estabelecimento_codigo -> prestador"
+    quality_rules: [fk_inexistente_estabelecimento_codigo]
+  - name: id_prestador_solicitante
+    type: bigint
+    nullable: true
+    required_for: []
+    classification: internal
+    description: "FK prestador/profissional SOLICITANTE. Opcional (Evolução V1)."
+    example: 4410
+    typical_source: "guia (solicitante)"
+    transformation: "lookup prestador_solicitante_codigo -> prestador"
+    quality_rules: [fk_inexistente_prestador_solicitante_codigo]
   - name: id_procedimento
     type: bigint
     nullable: false
@@ -119,6 +149,76 @@ fields:
     typical_source: "derivado ou campo da conta"
     transformation: "date_trunc('month', data_referencia_acordada)"
     quality_rules: [competencia_invalida]
+  - name: competencia_apresentacao
+    type: date
+    nullable: true
+    required_for: []
+    classification: internal
+    description: "Competência em que a conta foi APRESENTADA pelo prestador (Consolidação V1)."
+    example: "2026-08-01"
+    typical_source: "processamento de contas"
+    transformation: "date_trunc('month', ...)"
+    quality_rules: []
+  - name: competencia_pagamento
+    type: date
+    nullable: true
+    required_for: []
+    classification: internal
+    description: "Competência de PAGAMENTO/contabilização (Consolidação V1). A competência analítica é `competencia` (decisão de onboarding no mapping)."
+    example: "2026-09-01"
+    typical_source: "contas a pagar / contabilidade"
+    transformation: "date_trunc('month', ...)"
+    quality_rules: []
+  - name: numero_guia
+    type: string
+    nullable: true
+    required_for: []
+    classification: operational
+    description: "Guia de origem. Guia autorizada NÃO é conta apresentada nem paga."
+    example: "G-2026-000123"
+    typical_source: "autorização / TISS"
+    transformation: "-"
+    quality_rules: []
+  - name: numero_conta
+    type: string
+    nullable: true
+    required_for: []
+    classification: operational
+    description: "Conta médica (cabeçalho) à qual o item pertence. O grão do evento é o ITEM."
+    example: "CTA-2026-7788"
+    typical_source: "contas médicas"
+    transformation: "-"
+    quality_rules: []
+  - name: unidade_medida
+    type: string
+    nullable: true
+    required_for: []
+    classification: operational
+    description: "Unidade de `quantidade` (sessão, diária, unidade, ml...)."
+    example: "diaria"
+    typical_source: "conta"
+    transformation: "-"
+    quality_rules: []
+  - name: natureza_lancamento
+    type: string
+    nullable: true
+    required_for: []
+    classification: operational
+    description: "normal | estorno | ajuste | cancelamento. Vazio = normal. Estorno/ajuste/cancelamento admitem valor negativo."
+    example: "normal"
+    typical_source: "processamento de contas"
+    transformation: "normalizar"
+    quality_rules: [valor_negativo]
+  - name: valor_pago_origem
+    type: string
+    nullable: true
+    required_for: []
+    classification: internal
+    description: "DERIVADO: informado (valor_pago veio da origem) | derivado (apresentado − glosado). valor_pago = valor APROVADO após glosa, não pago em caixa."
+    example: "informado"
+    typical_source: "derivado"
+    transformation: "Silver"
+    quality_rules: []
   - name: tipo_atendimento
     type: string
     nullable: false

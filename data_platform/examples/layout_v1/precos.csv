@@ -1,0 +1,3 @@
+cod_prestador;cod_procedimento;dt_inicio_vigencia;dt_fim_vigencia;vl_unitario;tipo_remuneracao
+PR-0001;P-1001;01/01/2026;01/04/2026;180,00;tabela
+PR-0001;P-1001;01/04/2026;;198,00;tabela

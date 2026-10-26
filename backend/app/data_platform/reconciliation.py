@@ -145,3 +145,24 @@ def reconcile(session: Session, tenant_id: str, ingestion_run_id: int, *,
         out.append(ReconCheck("beneficiarios_silver", "beneficiario", "total",
                               _d(len(beneficiarios)), _d(n_silver), ct))
     return out
+
+
+def financeiro(session: Session, meses: list[date]) -> list[ReconCheck]:
+    """Consolidação V1 — verificações de `analytics.reconciliacao_financeira` nos meses da
+    carga, convertidas para o gate: FAIL reprova a publicação; WARNING (diferença explicada,
+    ex.: receita não detalhada até plano) segue registrada; INFO não entra no gate."""
+    from app.analytics import reconciliacao_financeira as rf
+
+    if not meses:
+        return []
+    out: list[ReconCheck] = []
+    for v in rf.verificar(session, meses):
+        if v.status == rf.INFO:
+            continue
+        esperado, obtido = _d(v.esperado), _d(v.obtido)
+        tol = abs(obtido - esperado) if v.status == rf.WARNING else Decimal(0)
+        if v.status == rf.FAIL and esperado == obtido:  # FAIL lógico sem diferença numérica
+            obtido += Decimal("0.01")
+        out.append(ReconCheck(v.check_id, "financeiro", v.escopo, esperado, obtido, tol))
+    return out
+

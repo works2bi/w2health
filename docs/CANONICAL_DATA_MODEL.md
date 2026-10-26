@@ -1,7 +1,15 @@
 # Modelo Canônico W2Health (camada Silver)
 
 > **Estado:** revisado contra o código da `main` após a Fase 3 (out/2026). Substitui a
-> versão "v1.2" deste documento.
+> versão "v1.2" deste documento. **Evolução V1 — investigação de custos (23/10/2026):**
+> entidades opcionais `vinculo_beneficiario` e `preco_contratado`, vínculo da competência e
+> rede (estabelecimento/solicitante) no evento — ver
+> [EVOLUCAO_V1_INVESTIGACAO_CUSTOS.md](EVOLUCAO_V1_INVESTIGACAO_CUSTOS.md).
+> **Consolidação do canônico V1 (23/10/2026):** empresa, empresa × contrato, fatura, item,
+> recebimento e receita reconhecida (substitui `receita_contrato`); atribuição estrita do
+> evento ao vínculo vigente; vidas históricas. Layout candidato e divergências atualizadas:
+> [MODELO_CANONICO_V1_OFICIAL_CANDIDATO.md](MODELO_CANONICO_V1_OFICIAL_CANDIDATO.md); regras:
+> [REGRAS_RECEITA_E_FATURAMENTO.md](REGRAS_RECEITA_E_FATURAMENTO.md).
 > **Para quem:** quem vai produzir a documentação formal de dados (engenharia de dados).
 > As seções 7 e 8 listam o que está divergente ou em aberto e precisa de decisão antes de
 > virar documentação definitiva.
@@ -10,8 +18,8 @@
 
 | # | Artefato | Papel |
 |---|---|---|
-| 1 | `data_platform/contracts/*.yaml` | **Contrato canônico** — fonte de verdade do modelo (13 entidades). Formato em `data_platform/contracts/_schema.md`. |
-| 2 | `backend/app/data_platform/canonical.py` | **Contrato operacional v1** — o subconjunto que uma carga de arquivo precisa entregar hoje (8 entidades), com FKs por código de negócio. |
+| 1 | `data_platform/contracts/*.yaml` | **Contrato canônico** — fonte de verdade do modelo (15 entidades). Formato em `data_platform/contracts/_schema.md`. |
+| 2 | `backend/app/data_platform/canonical.py` | **Contrato operacional v1** — o subconjunto que uma carga de arquivo pode entregar hoje (11 entidades; 2 opcionais da Evolução V1), com FKs por código de negócio. |
 | 3 | `backend/app/models/` + `backend/alembic/versions/` | **Implementação física** — as tabelas Silver no PostgreSQL (nomes no plural). |
 | 4 | `docs/DATA_DICTIONARY.md` | Dicionário campo a campo, **gerado** de (1) por `python data_platform/generate_dictionary.py`. Nunca editar à mão. Em sincronia com os YAMLs na data desta revisão. |
 
@@ -57,11 +65,17 @@ Silver · ⏸ layout preparado, sem carga · — cadastro da plataforma.
 | `prestador` | `prestadores` | 1 por prestador | `(tenant_id, codigo)` | ✅ |
 | `procedimento` | `procedimentos` | 1 por código de procedimento | `(tenant_id, codigo)` | ✅ |
 | `beneficiario` | `beneficiarios` | 1 por vida (estado atual) | `(tenant_id, codigo)` | ✅ |
+| `vinculo_beneficiario` | `beneficiario_vinculos` | 1 por período de vínculo (contrato/plano) | `(tenant_id, beneficiário, vigencia_inicio)` | ✅ opcional (Evolução V1) |
+| `preco_contratado` | `precos_contratados` | 1 por vigência de preço prestador × procedimento | `(tenant_id, prestador, procedimento, vigencia_inicio)` | ✅ opcional (Evolução V1) |
 | `receita` | `receitas` | competência × plano | `(tenant_id, competencia, plano)` | ✅ |
 | `evento_assistencial` | `eventos_assistenciais` | 1 por item de conta/atendimento | `(tenant_id, fonte, source_record_id)` | ✅ |
 | `glosa` | coluna `eventos_assistenciais.valor_glosado` | atributo do evento | — | ✅ (no evento) |
 | `coparticipacao` | coluna `eventos_assistenciais.valor_coparticipacao` | atributo do evento | — | ✅ (no evento) |
-| `receita_contrato` | `receitas_contrato` | competência × contrato | `(tenant_id, competencia, contrato)` | ⏸ (YAML `version: 0`, `status: draft`) |
+| `empresa` | `empresas` | 1 por empresa | `(tenant_id, codigo)` | ✅ opcional (Consolidação V1) |
+| `empresa_contrato` | `empresas_contratos` | período de associação empresa × contrato × papel | `(tenant_id, contrato, papel, vigencia_inicio)` | ✅ opcional |
+| `fatura` / `fatura_item` | `faturas` / `fatura_itens` | documento / item de cobrança | `(tenant_id, numero_documento[, numero_item])` | ✅ opcional |
+| `recebimento` | `recebimentos` | baixa | `(tenant_id, numero_recebimento)` | ✅ opcional |
+| `receita_reconhecida` | `receitas_reconhecidas` (era `receitas_contrato`) | lançamento × nível de atribuição | `(tenant_id, competencia, source_record_id)` | ✅ opcional — sem rateio |
 | *(sem contrato YAML)* | `regioes` | cidade × UF por tenant | `(tenant_id, cidade, uf)` — lógica, sem constraint no banco | 🔹 derivada de `cidade`/`uf` |
 | *(sem contrato YAML)* | `diagnosticos` | 1 por CID | `(tenant_id, cid)` | ⏸ só o gerador sintético popula |
 
@@ -73,7 +87,8 @@ NOT NULL, sem default, e é protegida por RLS ([MULTI_TENANCY.md](MULTI_TENANCY.
 FKs chegam por **código de negócio** (`plano_codigo`, `beneficiario_codigo`…) e são
 convertidas em ids técnicos (`id_plano`…) na Silver. "Obrig." = obrigatório no contrato
 operacional (`canonical.py`). Ordem de carga: especialidade → plano → contrato → plano_contrato →
-prestador → procedimento → beneficiário → receita → evento.
+prestador → procedimento → beneficiário → vínculo (opcional) → preço contratado (opcional) →
+receita → evento.
 
 ### 4.1 especialidade — carga: UPSERT por código
 | Campo | Tipo | Obrig. | Observação |
@@ -175,6 +190,8 @@ do tenant.
 | `prestador_codigo` | string | sim | FK → prestador executante |
 | `procedimento_codigo` | string | sim | FK → procedimento |
 | `especialidade_codigo` | string | não | ausente → especialidade do procedimento |
+| `estabelecimento_codigo` | string | não | FK → prestador: LOCAL do atendimento (Evolução V1) |
+| `prestador_solicitante_codigo` | string | não | FK → prestador solicitante (Evolução V1) |
 | `data_evento` | date | sim | |
 | `competencia` | month | não | ausente → mês de `data_evento` (**decisão de onboarding a registrar por cliente**) |
 | `tipo_atendimento` | string | sim | `consulta` · `exame` · `terapia` · `pronto_socorro` · `internacao` · `cirurgia` · `opme` |
@@ -184,11 +201,39 @@ do tenant.
 | `valor_pago` | decimal | não | ausente → `valor_apresentado − valor_glosado` |
 | `valor_coparticipacao` | decimal | não | ausente → 0 (cobertura registrada como INFO no DQ) |
 
-Derivados na Silver: `id_regiao` (região do **beneficiário**), `id_diagnostico` = nulo.
+Derivados na Silver: `id_regiao` (região do **beneficiário**), `id_diagnostico` = nulo,
+**`id_contrato` / `id_plano` = vínculo vigente na `data_evento`** (histórico de
+`vinculo_beneficiario` se enviado; senão o vínculo atual do beneficiário no momento da carga)
+— **congelados no evento**: uma troca posterior de contrato não reclassifica despesa já
+carregada (Evolução V1; a Gold usa `COALESCE(evento, beneficiário)` para registros legados).
 Os eventos das competências do arquivo **da mesma fonte** (`source_connection_id`) são
 substituídos; eventos de outras fontes do mesmo tenant ficam intactos. Idempotência:
 índice único `(tenant_id, source_connection_id, source_record_id)`.
 Só no banco: `cenario_tag` (QA do gerador sintético).
+
+### 4.9 vinculo_beneficiario — carga: UPSERT por (beneficiário, início) · OPCIONAL
+| Campo | Tipo | Obrig. | Observação |
+|---|---|---|---|
+| `beneficiario_codigo` | string | sim | FK → beneficiário |
+| `contrato_codigo`, `plano_codigo` | string | sim | o par tem de existir em `plano_contrato` (`plano_fora_do_contrato` = ERROR) |
+| `vigencia_inicio` | date | sim | inclusive |
+| `vigencia_fim` | date | não | **exclusiva**; vazio = vigente. Sobreposição na mesma chave = ERROR |
+
+Usado só para resolver o contrato/plano de cada evento. A exposição (vidas) por contrato
+ainda usa o vínculo atual do beneficiário — limitação registrada.
+
+### 4.10 preco_contratado — carga: UPSERT por (prestador, procedimento, início) · OPCIONAL
+| Campo | Tipo | Obrig. | Observação |
+|---|---|---|---|
+| `prestador_codigo`, `procedimento_codigo` | string | sim | FKs |
+| `vigencia_inicio` | date | sim | uma nova vigência = reajuste/renegociação |
+| `vigencia_fim` | date | não | exclusiva; vazio = vigente |
+| `valor_unitario` | decimal | sim | por UNIDADE (mesma unidade de `evento.quantidade`); ≤ 0 = ERROR |
+| `tipo_remuneracao` | string | não | `tabela` · `pacote` · `diaria` · `honorario` · `outro` — informativo |
+
+**Única evidência aceita para afirmar "reajuste".** Sem preço vigente nos dois períodos
+comparados, a variação de valor por unidade é "custo unitário observado". Não é módulo de
+negociação.
 
 ## 5. Semântica financeira
 
@@ -231,6 +276,8 @@ acima de `quality.max_rejected_ratio` do mapping (padrão 0) a carga é bloquead
 | `benef_inexistente_em_evento`, `prestador_inexistente`, `contrato_inexistente`, `fk_inexistente_<campo>` | ERROR | evento, beneficiário, dimensões |
 | `evento_sem_data`, `competencia_invalida`, `valor_negativo`, `glosa_maior_que_apresentado` | ERROR | evento, receita |
 | `data_saida_antes_adesao` | ERROR | beneficiário |
+| `vigencia_invertida`, `vigencia_sobreposta` | ERROR | vínculo, preço contratado (Evolução V1) |
+| `preco_nao_positivo` | ERROR | preço contratado (Evolução V1) |
 | `uf_invalida`, `colunas_ausentes`, `mapping_invalido`, `arquivo_obrigatorio_ausente` | ERROR | carga |
 | `coparticipacao_acima_permitido`, `despesa_liquida_inconsistente` | WARNING | evento |
 | `evento_duplicado`, `receita_duplicada`, duplicidade de chave no lote | WARNING (mantém a última) | evento, receita, dimensões |
@@ -248,7 +295,7 @@ contrato operacional falhar no banco — precisam de correção no código, não
 | D3 | Pseudonimização | O YAML diz "hash ou máscara, nunca CPF em claro", mas o mapping só oferece `strip/upper/lower/collapse_spaces/digits_only`. | Hoje a pseudonimização é responsabilidade do cliente antes do envio. Documentar ou implementar. |
 | D4 | `procedimento.id_especialidade` | Nullable no YAML; obrigatório na carga e no banco. | Contrato canônico e físico discordam. |
 | D5 | `prestador.cidade/uf/especialidade`, `beneficiario.contrato/cidade/uf` | Nullable no YAML; obrigatórios na carga. | Diferença **deliberada**, já documentada em [MAPPING_FRAMEWORK.md](MAPPING_FRAMEWORK.md) §6. |
-| D6 | `evento_assistencial.id_contrato` | Existe no YAML; **não existe** em `eventos_assistenciais` — o contrato do evento é o contrato **atual** do beneficiário. | Troca de contrato reescreve o histórico de Contract Intelligence. |
+| D6 | `evento_assistencial.id_contrato` | ✅ **Resolvida na Evolução V1** (migration `d0e1f2a3b4c5`): `id_contrato`/`id_plano` gravados no evento pela data do atendimento. Resta: vidas por contrato ainda pelo vínculo atual. | — |
 | D7 | Chave do evento | YAML: `(tenant_id, source_system, source_record_id)`; banco: `(tenant_id, source_connection_id, source_record_id)`. | Duas conexões do mesmo sistema podem gerar o "mesmo" evento duas vezes. |
 | D8 | Estratégia de carga | YAML declara `INCREMENTAL_ID` (evento) e `UPSERT` (receita); o código faz SNAPSHOT por competência. | Atualizar os YAMLs ou o código; uma carga parcial de um mês apaga o resto daquele mês. |
 | D9 | `tenant` | YAML: `nome`, `status` = `onboarding/ativo/suspenso`; banco: `name`, `legal_name`, `uuid`, `plan_id`, `is_synthetic`, `status` = `ACTIVE…`. | YAML desatualizado desde a Fundação SaaS V1. |

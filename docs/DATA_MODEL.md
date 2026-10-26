@@ -66,6 +66,18 @@ consultorio), `id_regiao→regioes`, `id_especialidade_principal→especialidade
 (ativo|inativo). FK composta (`tenant_id`, `id_contrato`, `id_plano`) → `planos_contratos`:
 o plano da vida tem de ser um plano do contrato dela.
 
+### `beneficiario_vinculos`  (Evolução V1) — histórico de vínculo, opcional
+`id`, `id_beneficiario`, `id_contrato`, `id_plano`, `vigencia_inicio`, `vigencia_fim`
+(exclusiva; nula = vigente) + linhagem. Único: (`tenant_id`, `id_beneficiario`,
+`vigencia_inicio`). FK composta → `planos_contratos`. Só é usado pelo Silver para resolver
+o contrato/plano de cada evento.
+
+### `precos_contratados`  (Evolução V1) — preço unitário com vigência, opcional
+`id`, `id_prestador`, `id_procedimento`, `vigencia_inicio`, `vigencia_fim` (exclusiva),
+`valor_unitario` (por unidade de `quantidade`), `tipo_remuneracao` + linhagem. Único:
+(`tenant_id`, `id_prestador`, `id_procedimento`, `vigencia_inicio`). Única evidência aceita
+para afirmar reajuste ([ANALYTICS_ENGINE.md](ANALYTICS_ENGINE.md) §13).
+
 ### `receitas`  — grão: competência × plano
 `id`, `competencia`, `id_plano→planos`, `quantidade_beneficiarios`,
 `receita_contraprestacao`. Único: (`competencia`, `id_plano`).
@@ -77,6 +89,10 @@ o plano da vida tem de ser um plano do contrato dela.
 `valor_apresentado`, `valor_glosado`, `valor_pago`, `valor_coparticipacao` (v1.1),
 `cenario_tag` (nullable — rótulo do cenário sintético que injetou/alterou a linha; só
 QA/testes).
+**Evolução V1 (nullable):** `id_contrato`, `id_plano` — vínculo vigente NA DATA DO EVENTO,
+congelado na carga (a Gold usa `COALESCE(evento, beneficiário)`); `id_estabelecimento`
+(local do atendimento) e `id_prestador_solicitante` — FKs → `prestadores`; `id_prestador`
+segue sendo o executante.
 
 Semântica financeira (v1.1 — ver [V1.1.md](V1.1.md) § Etapa B):
 ```

@@ -71,9 +71,9 @@ backend (`backend/app/data_platform/readiness.py`); o frontend recebe o resultad
 | Capability | Obrigatórios (bloqueiam) | Desejáveis (geram `PARTIAL`) |
 |---|---|---|
 | `executive_overview`, `loss_ratio_intelligence`, `insights` | eventos, receita, Gold | — |
-| `financial_composition` | eventos, receita, Gold | glosa, coparticipação |
+| `financial_composition` | eventos, receita (legada **ou** reconhecida — Consolidação V1), Gold | glosa, coparticipação |
 | `advanced_explanations` | eventos, beneficiários, Gold | saída de carteira, perfil de utilização |
-| `contract_intelligence` | eventos, beneficiários, contratos com vínculo, Gold | — |
+| `contract_intelligence` | eventos, beneficiários, contratos com vínculo, Gold | receita reconhecida atribuída a contrato (Consolidação V1 — sem ela: PARTIAL, sem sinistralidade de contrato/empresa) |
 | `provider_intelligence` | eventos, prestadores, Gold | — |
 | `beneficiary_intelligence` | eventos, beneficiários, Gold | — |
 | `alerts` | eventos, Gold | — |

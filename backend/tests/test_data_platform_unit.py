@@ -55,7 +55,12 @@ def test_mapping_generico_do_repositorio_e_valido():
     assert m.ref == "generic_operator@v1"
     assert {e.target_entity for e in m.entities} == {
         "especialidade", "plano", "contrato", "plano_contrato", "prestador", "procedimento",
-        "beneficiario", "receita", "evento_assistencial"}
+        "beneficiario", "receita", "evento_assistencial",
+        # Evolução V1 — opcionais (investigação de custos)
+        "vinculo_beneficiario", "preco_contratado",
+        # Consolidação do canônico V1 — opcionais (cadastro de empresa e receita)
+        "empresa", "empresa_contrato", "fatura", "fatura_item", "recebimento",
+        "receita_reconhecida"}
     assert m.max_rejected_ratio == 0.0 and m.financial_tolerance_abs == Decimal("0")
 
 

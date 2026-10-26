@@ -135,3 +135,103 @@ entities:
       valor_glosado: {source: vl_glosa, type: decimal, default: 0}
       valor_pago: {source: vl_pago, type: decimal}
       valor_coparticipacao: {source: vl_coparticipacao, type: decimal, default: 0}
+
+  # ---- Evolução V1 (investigação de custos) — arquivos OPCIONAIS. Ausentes: INFO
+  # "arquivo opcional ausente"; o motor fala em "custo unitário observado" (sem tabela) e
+  # usa o vínculo atual do beneficiário (sem histórico).
+  - source_entity: vinculos
+    target_entity: vinculo_beneficiario
+    required: false
+    fields:
+      beneficiario_codigo: {source: matricula, normalize: [strip, upper]}
+      contrato_codigo: {source: cod_contrato, normalize: [strip, upper]}
+      plano_codigo: {source: cod_plano, normalize: [strip, upper]}
+      vigencia_inicio: {source: dt_inicio, type: date}
+      vigencia_fim: {source: dt_fim, type: date}
+
+  - source_entity: precos
+    target_entity: preco_contratado
+    required: false
+    fields:
+      prestador_codigo: {source: cod_prestador, normalize: [strip, upper]}
+      procedimento_codigo: {source: cod_procedimento, normalize: [strip, upper]}
+      vigencia_inicio: {source: dt_inicio_vigencia, type: date}
+      vigencia_fim: {source: dt_fim_vigencia, type: date}
+      valor_unitario: {source: vl_unitario, type: decimal}
+      tipo_remuneracao: {source: tipo_remuneracao, normalize: [strip, lower]}
+
+  # ---- Consolidação do canônico V1 — cadastro de empresa e fatos financeiros da receita
+  # (arquivos OPCIONAIS). Sem eles: receita só pela legada por plano; sem sinistralidade
+  # contratual (ver docs/REGRAS_RECEITA_E_FATURAMENTO.md).
+  - source_entity: empresas
+    target_entity: empresa
+    required: false
+    fields:
+      codigo: {source: cod_empresa, normalize: [strip, upper]}
+      nome: {source: nome_empresa, normalize: [collapse_spaces]}
+      tipo: {source: tipo_empresa, normalize: [strip, lower]}
+      status: {source: situacao, normalize: [strip, lower]}
+
+  - source_entity: empresa_contratos
+    target_entity: empresa_contrato
+    required: false
+    fields:
+      empresa_codigo: {source: cod_empresa, normalize: [strip, upper]}
+      contrato_codigo: {source: cod_contrato, normalize: [strip, upper]}
+      papel: {source: papel, normalize: [strip, lower]}
+      vigencia_inicio: {source: dt_inicio, type: date}
+      vigencia_fim: {source: dt_fim, type: date}
+
+  - source_entity: faturas
+    target_entity: fatura
+    required: false
+    fields:
+      numero_documento: {source: nr_documento, normalize: [strip, upper]}
+      unidade_cobranca: {source: unidade, normalize: [strip, lower]}
+      contrato_codigo: {source: cod_contrato, normalize: [strip, upper]}
+      empresa_codigo: {source: cod_empresa, normalize: [strip, upper]}
+      competencia_faturamento: {source: competencia, type: month, date_format: "%Y-%m"}
+      data_emissao: {source: dt_emissao, type: date}
+      data_vencimento: {source: dt_vencimento, type: date}
+      valor_bruto: {source: vl_bruto, type: decimal}
+      valor_desconto: {source: vl_desconto, type: decimal, default: 0}
+      valor_acrescimo: {source: vl_acrescimo, type: decimal, default: 0}
+      valor_total: {source: vl_total, type: decimal}
+      status: {source: situacao, normalize: [strip, lower]}
+
+  - source_entity: fatura_itens
+    target_entity: fatura_item
+    required: false
+    fields:
+      numero_documento: {source: nr_documento, normalize: [strip, upper]}
+      numero_item: {source: nr_item, normalize: [strip]}
+      natureza: {source: natureza, normalize: [strip, lower]}
+      contrato_codigo: {source: cod_contrato, normalize: [strip, upper]}
+      plano_codigo: {source: cod_plano, normalize: [strip, upper]}
+      competencia_referencia: {source: competencia_ref, type: month, date_format: "%Y-%m"}
+      quantidade_beneficiarios: {source: qtd_vidas, type: int}
+      valor: {source: vl_item, type: decimal}
+
+  - source_entity: recebimentos
+    target_entity: recebimento
+    required: false
+    fields:
+      numero_recebimento: {source: nr_baixa, normalize: [strip, upper]}
+      numero_documento: {source: nr_documento, normalize: [strip, upper]}
+      data_recebimento: {source: dt_pagamento, type: date}
+      valor_recebido: {source: vl_pago, type: decimal}
+
+  - source_entity: receitas_reconhecidas
+    target_entity: receita_reconhecida
+    required: false
+    load_strategy: COMPETENCIA_SNAPSHOT
+    fields:
+      source_record_id: {source: id_lancamento, normalize: [strip]}
+      competencia: {source: competencia, type: month, date_format: "%Y-%m"}
+      contrato_codigo: {source: cod_contrato, normalize: [strip, upper]}
+      plano_codigo: {source: cod_plano, normalize: [strip, upper]}
+      empresa_codigo: {source: cod_empresa, normalize: [strip, upper]}
+      natureza: {source: natureza, normalize: [strip, lower]}
+      numero_documento: {source: nr_documento, normalize: [strip, upper]}
+      quantidade_beneficiarios: {source: qtd_vidas, type: int}
+      receita_contraprestacao: {source: vl_reconhecido, type: decimal}

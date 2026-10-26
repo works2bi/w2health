@@ -47,8 +47,32 @@ class EventoAssistencial(TenantMixin, LineageMixin, Base):
     )
     id_regiao: Mapped[int] = mapped_column(ForeignKey("regioes.id"), index=True)
 
+    # Vínculo NA DATA DO EVENTO (Evolução V1 — investigação de custos). Congela contrato/
+    # plano da competência: se o beneficiário mudar de contrato depois, a despesa antiga
+    # não é reclassificada. Nulo = registro anterior à evolução; a Gold usa
+    # COALESCE(evento, beneficiário).
+    id_contrato: Mapped[int | None] = mapped_column(ForeignKey("contratos.id"), nullable=True)
+    id_plano: Mapped[int | None] = mapped_column(ForeignKey("planos.id"), nullable=True)
+    # Rede (opcionais — só quando a origem informa). `id_prestador` segue sendo o EXECUTANTE.
+    id_estabelecimento: Mapped[int | None] = mapped_column(ForeignKey("prestadores.id"), nullable=True)
+    id_prestador_solicitante: Mapped[int | None] = mapped_column(
+        ForeignKey("prestadores.id"), nullable=True
+    )
+
     data_evento: Mapped[date] = mapped_column(Date)
+    # competência ANALÍTICA — a base (atendimento | apresentação | pagamento) é decisão de
+    # onboarding registrada no mapping; as outras competências ficam preservadas abaixo.
     competencia: Mapped[date] = mapped_column(Date, index=True)
+    # Consolidação do canônico V1 — todos opcionais (a origem pode não ter)
+    competencia_apresentacao: Mapped[date | None] = mapped_column(Date, nullable=True)
+    competencia_pagamento: Mapped[date | None] = mapped_column(Date, nullable=True)
+    numero_guia: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    numero_conta: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    unidade_medida: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # normal | estorno | ajuste | cancelamento — estorno/ajuste podem ter valor negativo
+    natureza_lancamento: Mapped[str | None] = mapped_column(String(14), nullable=True)
+    # informado (veio da origem) | derivado (apresentado − glosado, regra do contrato)
+    valor_pago_origem: Mapped[str | None] = mapped_column(String(10), nullable=True)
     tipo_atendimento: Mapped[str] = mapped_column(String(20))
     quantidade: Mapped[int] = mapped_column(Integer, default=1)
 

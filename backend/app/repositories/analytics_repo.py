@@ -37,7 +37,9 @@ _COLUNAS_SINISTRALIDADE = """
     despesa_bruta, glosas, coparticipacao, despesa_liquida,
     sinistralidade_bruta, sinistralidade_liquida,
     beneficiarios_ativos, exposicao_beneficiario_mes, eventos, custo_pmpm,
-    receita_media_beneficiario
+    receita_media_beneficiario,
+    fonte_receita, receita_status, receita_legada, receita_atribuida_contrato,
+    receita_empresa_nao_detalhada, receita_nao_atribuida, cobertura_receita_contratual
 """
 
 
@@ -193,6 +195,29 @@ def prestador_peers_mes(
     return [dict(r) for r in rows]
 
 
+def custo_procedimentos_por_prestador(
+    session: Session, competencia: date, procedimentos: list[int]
+) -> list[dict]:
+    """Custo médio (Σ valor_pago / eventos) de CADA prestador nos procedimentos informados,
+    no mês — base da comparação com pares do MESMO procedimento e MESMO tipo (Evolução V1)."""
+    if not procedimentos:
+        return []
+    rows = session.execute(
+        text(
+            """
+            SELECT e.id_procedimento, e.id_prestador, p.tipo_prestador AS tipo,
+                   COUNT(*) AS eventos, SUM(e.valor_pago) AS despesa
+            FROM eventos_assistenciais e
+            JOIN prestadores p ON p.id = e.id_prestador
+            WHERE e.tenant_id = :t AND e.competencia = :c AND e.id_procedimento = ANY(:procs)
+            GROUP BY e.id_procedimento, e.id_prestador, p.tipo_prestador
+            """
+        ),
+        {"t": _t(session), "c": competencia, "procs": procedimentos},
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
 def beneficiario_serie(session: Session, id_beneficiario: int) -> list[dict]:
     rows = session.execute(
         text(
@@ -326,13 +351,19 @@ _FILTRO_DIMENSAO: dict[str, str] = {
     "grupo_despesa": "proc.grupo_procedimento = :kt",
     "faixa_etaria": "b.faixa_etaria = :kt",
     "sexo": "b.sexo = :kt",
-    "plano": "b.id_plano = :kv",
-    "contrato": "b.id_contrato = :kv",
+    # vínculo da competência gravado no EVENTO (Consolidação V1) — nunca o cadastro atual
+    "plano": "e.id_plano = :kv",
+    "contrato": "e.id_contrato = :kv",
 }
+
+#: chave da dimensão para eventos sem vínculo vigente (contrato/plano)
+NAO_ATRIBUIDO = "nao_atribuido"
 
 
 def _filtro_dimensao(dimensao: str, chave: str) -> tuple[str, dict]:
     """Retorna (cláusula SQL, params) para filtrar eventos por (dimensao, chave)."""
+    if dimensao in ("contrato", "plano") and chave == NAO_ATRIBUIDO:
+        return f"e.id_{dimensao} IS NULL", {}
     clausula = _FILTRO_DIMENSAO[dimensao]
     params = {"kv": int(chave)} if ":kv" in clausula else {"kt": chave}
     return clausula, params
@@ -384,7 +415,7 @@ def beneficiarios_da_categoria(
     dimensão/chave/mês (sem limite — base da análise de coortes, Etapa A).
     `contrato_id` (v1.2) restringe ao contrato."""
     filtro_dim, fparams = _filtro_dimensao(dimensao, chave)
-    filtro_ctr = "AND b.id_contrato = :ctr" if contrato_id is not None else ""
+    filtro_ctr = "AND e.id_contrato = :ctr" if contrato_id is not None else ""
     if contrato_id is not None:
         fparams["ctr"] = contrato_id
     rows = session.execute(
@@ -430,7 +461,7 @@ def prestadores_por_beneficiario_na_categoria(
     if not ids:
         return {}
     filtro_dim, fparams = _filtro_dimensao(dimensao, chave)
-    filtro_ctr = "AND b.id_contrato = :ctr" if contrato_id is not None else ""
+    filtro_ctr = "AND e.id_contrato = :ctr" if contrato_id is not None else ""
     if contrato_id is not None:
         fparams["ctr"] = contrato_id
     rows = session.execute(
@@ -462,7 +493,7 @@ def perfil_utilizacao_despesa(
     if not ids:
         return {}
     filtro_dim, fparams = _filtro_dimensao(dimensao, chave)
-    filtro_ctr = "AND b.id_contrato = :ctr" if contrato_id is not None else ""
+    filtro_ctr = "AND e.id_contrato = :ctr" if contrato_id is not None else ""
     if contrato_id is not None:
         fparams["ctr"] = contrato_id
     rows = session.execute(
@@ -542,9 +573,10 @@ def planos_sinistralidade_mes(session: Session, competencia: date) -> list[dict]
             LEFT JOIN receitas r
                    ON r.id_plano = pl.id AND r.competencia = :c AND r.tenant_id = :t
             LEFT JOIN (
-                SELECT b.id_plano, SUM(e.valor_pago) AS despesa
+                SELECT e.id_plano AS id_plano, SUM(e.valor_pago) AS despesa
                 FROM eventos_assistenciais e JOIN beneficiarios b ON b.id = e.id_beneficiario
-                WHERE e.tenant_id = :t AND e.competencia = :c GROUP BY b.id_plano
+                WHERE e.tenant_id = :t AND e.competencia = :c
+                GROUP BY e.id_plano
             ) d ON d.id_plano = pl.id
             LEFT JOIN (
                 SELECT id_plano, COUNT(*) AS vidas FROM beneficiarios
@@ -617,7 +649,8 @@ _DIM_ESCOPO_CONTRATO: dict[str, tuple[str, str, str]] = {
                "r.id::text", "concat(r.cidade, '/', r.uf)"),
     "faixa_etaria": ("", "b.faixa_etaria", "b.faixa_etaria"),
     "sexo": ("", "b.sexo", "b.sexo"),
-    "plano": ("JOIN planos pl ON pl.id = b.id_plano", "pl.id::text", "pl.nome"),
+    "plano": ("LEFT JOIN planos pl ON pl.id = e.id_plano",
+              "COALESCE(pl.id::text, 'nao_atribuido')", "COALESCE(pl.nome, 'Não atribuído')"),
 }
 
 
@@ -651,7 +684,8 @@ def contrato_competencia(session: Session, id_contrato: int, competencia: date) 
             """
             SELECT competencia, vidas, despesa, despesa_bruta, glosas, coparticipacao,
                    despesa_liquida, eventos, beneficiarios_com_evento, custo_pmpm,
-                   gini, top5_share, n_beneficiarios_alto_custo
+                   gini, top5_share, n_beneficiarios_alto_custo,
+                   receita_reconhecida, sinistralidade_liquida, motivo_sem_sinistralidade
             FROM agg_contrato_competencia
             WHERE tenant_id = :t AND id_contrato = :c AND competencia = :m
             """
@@ -667,7 +701,8 @@ def contrato_serie(session: Session, id_contrato: int) -> list[dict]:
             """
             SELECT competencia, vidas, despesa, despesa_bruta, glosas, coparticipacao,
                    despesa_liquida, eventos, custo_pmpm, gini, top5_share,
-                   n_beneficiarios_alto_custo
+                   n_beneficiarios_alto_custo,
+                   receita_reconhecida, sinistralidade_liquida, motivo_sem_sinistralidade
             FROM agg_contrato_competencia
             WHERE tenant_id = :t AND id_contrato = :c ORDER BY competencia
             """
@@ -684,10 +719,16 @@ def contratos_resumo_mes(session: Session, competencia: date) -> list[dict]:
             SELECT ac.id_contrato, ct.nome, ct.tipo, pc.plano,
                    ac.vidas, ac.despesa, ac.despesa_bruta, ac.glosas, ac.coparticipacao,
                    ac.despesa_liquida, ac.eventos, ac.custo_pmpm, ac.gini, ac.top5_share,
-                   ac.n_beneficiarios_alto_custo
+                   ac.n_beneficiarios_alto_custo,
+                   ac.receita_reconhecida, ac.sinistralidade_liquida, ac.motivo_sem_sinistralidade,
+                   em.id AS id_empresa, em.nome AS empresa
             FROM agg_contrato_competencia ac
             JOIN contratos ct ON ct.id = ac.id_contrato
             LEFT JOIN (""" + _PLANOS_DO_CONTRATO + """) pc ON pc.id_contrato = ct.id
+            LEFT JOIN empresas_contratos ec
+                   ON ec.tenant_id = :t AND ec.id_contrato = ct.id AND ec.papel = 'contratante'
+                  AND ec.vigencia_inicio <= :m AND (ec.vigencia_fim IS NULL OR ec.vigencia_fim > :m)
+            LEFT JOIN empresas em ON em.id = ec.id_empresa
             WHERE ac.tenant_id = :t AND ac.competencia = :m
             ORDER BY ac.despesa_liquida DESC
             """
@@ -748,7 +789,8 @@ def dimensao_mes_por_contrato(
             FROM eventos_assistenciais e
             JOIN beneficiarios b ON b.id = e.id_beneficiario
             {joins}
-            WHERE e.tenant_id = :t AND e.competencia = :m AND b.id_contrato = :c
+            WHERE e.tenant_id = :t AND e.competencia = :m
+                  AND e.id_contrato = :c
             GROUP BY {chave_expr}
             """
         ),
@@ -772,7 +814,8 @@ def procedimentos_mes_detalhe_por_contrato(
             FROM eventos_assistenciais e
             JOIN beneficiarios b ON b.id = e.id_beneficiario
             JOIN procedimentos pr ON pr.id = e.id_procedimento
-            WHERE e.tenant_id = :t AND e.competencia = :m AND b.id_contrato = :c
+            WHERE e.tenant_id = :t AND e.competencia = :m
+                  AND e.id_contrato = :c
             GROUP BY e.id_procedimento, pr.id_especialidade, pr.grupo_procedimento, pr.descricao
             """
         ),

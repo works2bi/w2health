@@ -1,0 +1,157 @@
+entity: fatura
+version: 1
+grain: "1 linha por documento de cobrança (fatura/boleto/nota) emitido pela operadora"
+primary_key: [tenant_id, id_fatura]
+business_keys:
+  - [tenant_id, numero_documento]
+load_strategy: UPSERT
+watermark_column: source_updated_at
+updated_at_column: source_updated_at
+deduplication_strategy: "business_key"
+fields:
+  - name: tenant_id
+    type: string
+    nullable: false
+    required_for: [ALL]
+    classification: internal
+    description: "Cliente."
+    example: "operadora-alfa"
+    typical_source: "constante"
+    transformation: "literal"
+    quality_rules: [tenant_id_ausente]
+  - name: id_fatura
+    type: bigint
+    nullable: false
+    required_for: [financial]
+    classification: internal
+    description: "Surrogate key."
+    example: 9001
+    typical_source: "gerado"
+    transformation: "surrogate"
+    quality_rules: []
+  - name: numero_documento
+    type: string
+    nullable: false
+    required_for: [financial]
+    classification: operational
+    description: "Número do documento na origem. Único por tenant."
+    example: "FAT-202604-000123"
+    typical_source: "faturamento"
+    transformation: "-"
+    quality_rules: []
+  - name: unidade_cobranca
+    type: string
+    nullable: false
+    required_for: [financial]
+    classification: operational
+    description: "contrato | empresa — quem é cobrado. Exige o código correspondente (e só ele)."
+    example: "empresa"
+    typical_source: "faturamento"
+    transformation: "normalizar"
+    quality_rules: [unidade_cobranca_inconsistente]
+  - name: id_contrato
+    type: bigint
+    nullable: true
+    required_for: []
+    classification: internal
+    description: "FK contrato (unidade = contrato)."
+    example: 45
+    typical_source: "faturamento"
+    transformation: "lookup contrato.codigo"
+    quality_rules: [fk_inexistente_contrato_codigo]
+  - name: id_empresa
+    type: bigint
+    nullable: true
+    required_for: []
+    classification: internal
+    description: "FK empresa (unidade = empresa)."
+    example: 7
+    typical_source: "faturamento"
+    transformation: "lookup empresa.codigo"
+    quality_rules: [fk_inexistente_empresa_codigo]
+  - name: competencia_faturamento
+    type: date
+    nullable: false
+    required_for: [financial]
+    classification: internal
+    description: "Competência de FATURAMENTO (1º dia do mês). Não é a de reconhecimento nem a de recebimento."
+    example: "2026-03-01"
+    typical_source: "faturamento"
+    transformation: "date_trunc('month', ...)"
+    quality_rules: []
+  - name: data_emissao
+    type: date
+    nullable: true
+    required_for: []
+    classification: operational
+    description: "Data de emissão."
+    example: "2026-03-20"
+    typical_source: "faturamento"
+    transformation: "-"
+    quality_rules: []
+  - name: data_vencimento
+    type: date
+    nullable: true
+    required_for: []
+    classification: operational
+    description: "Vencimento."
+    example: "2026-04-10"
+    typical_source: "faturamento"
+    transformation: "-"
+    quality_rules: []
+  - name: valor_bruto
+    type: numeric
+    nullable: false
+    required_for: [financial]
+    classification: operational
+    description: "Valor antes de descontos e acréscimos."
+    example: 12000.0
+    typical_source: "faturamento"
+    transformation: "-"
+    quality_rules: [valor_negativo]
+  - name: valor_desconto
+    type: numeric
+    nullable: false
+    required_for: []
+    classification: operational
+    description: "Descontos (≥ 0)."
+    example: 0
+    typical_source: "faturamento"
+    transformation: "coalesce(..., 0)"
+    quality_rules: [valor_negativo]
+  - name: valor_acrescimo
+    type: numeric
+    nullable: false
+    required_for: []
+    classification: operational
+    description: "Juros, multas e acréscimos (≥ 0)."
+    example: 0
+    typical_source: "faturamento"
+    transformation: "coalesce(..., 0)"
+    quality_rules: [valor_negativo]
+  - name: valor_total
+    type: numeric
+    nullable: false
+    required_for: [financial]
+    classification: operational
+    description: "= bruto − desconto + acréscimo (derivado se ausente; se informado, tem de bater)."
+    example: 12000.0
+    typical_source: "faturamento"
+    transformation: "coalesce(origem, bruto − desconto + acréscimo)"
+    quality_rules: [fatura_total_inconsistente]
+  - name: status
+    type: string
+    nullable: true
+    required_for: []
+    classification: operational
+    description: "emitida | cancelada | substituida. Só 'emitida' entra no faturado."
+    example: "emitida"
+    typical_source: "faturamento"
+    transformation: "normalizar"
+    quality_rules: []
+metadata_fields: [tenant_id, source_system, source_entity, source_record_id, ingestion_id,
+                  ingestion_timestamp, source_updated_at, reference_date, raw_payload_hash]
+notes: >
+  OPCIONAL. Documento de cobrança — FATURADO ≠ RECONHECIDO ≠ RECEBIDO. Nunca usado como
+  receita da sinistralidade (essa é `receita_reconhecida`). Itens em `fatura_item`;
+  recebimentos em `recebimento`.

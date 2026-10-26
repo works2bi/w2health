@@ -163,7 +163,8 @@ def _parse_entity(e: dict) -> EntityMapping:
     strategy = e.get("load_strategy", "UPSERT")
     if strategy not in LOAD_STRATEGIES:
         raise MappingError(f"load_strategy inválida: {strategy}")
-    if strategy == "COMPETENCIA_SNAPSHOT" and te not in ("evento_assistencial", "receita"):
+    if strategy == "COMPETENCIA_SNAPSHOT" and te not in ("evento_assistencial", "receita",
+                                                          "receita_reconhecida"):
         raise MappingError("COMPETENCIA_SNAPSHOT só se aplica a fatos por competência")
     raw_fields = e.get("fields")
     if not isinstance(raw_fields, dict) or not raw_fields:

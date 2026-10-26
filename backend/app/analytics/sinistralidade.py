@@ -15,6 +15,22 @@ def _f(x) -> float:
     return float(x) if x is not None else 0.0
 
 
+AVISO_RECEITA_DIVERGENTE = (
+    "Receita da competência divergente entre a fonte reconhecida e a legada por plano — "
+    "sinistralidade NÃO publicada até a divergência ser resolvida (ver "
+    "/analytics/receitas/reconciliacao)."
+)
+
+
+def _divergente(r: dict | None) -> bool:
+    return bool(r) and r.get("receita_status") == "divergente"
+
+
+def _fonte(r: dict) -> dict:
+    """Origem da receita da competência — nunca a soma das fontes (Consolidação V1)."""
+    return {"fonte_receita": r.get("fonte_receita"), "receita_status": r.get("receita_status")}
+
+
 def serie(session: Session) -> list[dict]:
     """Série mensal completa com sinistralidade, acumulado 12m e variações."""
     linhas = repo.serie_sinistralidade(session)
@@ -24,24 +40,29 @@ def serie(session: Session) -> list[dict]:
     for i, r in enumerate(linhas):
         despesas.append(_f(r["despesa"]))
         receitas.append(_f(r["receita"]))
-        s = _f(r["sinistralidade"])
-        s_ant = _f(linhas[i - 1]["sinistralidade"]) if i > 0 else None
-        s_yoy = _f(linhas[i - 12]["sinistralidade"]) if i >= 12 else None
+        s = None if _divergente(r) else _f(r["sinistralidade"])
+        s_ant = None if i == 0 or _divergente(linhas[i - 1]) else _f(linhas[i - 1]["sinistralidade"])
+        s_yoy = None if i < 12 or _divergente(linhas[i - 12]) else _f(linhas[i - 12]["sinistralidade"])
+        div12 = any(_divergente(x) for x in linhas[max(0, i - 11): i + 1])
         out.append(
             {
                 "competencia": r["competencia"].isoformat(),
                 "receita": round(_f(r["receita"]), 2),
                 "despesa": round(_f(r["despesa"]), 2),
-                "sinistralidade": round(s, 2),
+                "sinistralidade": round(s, 2) if s is not None else None,
+                **_fonte(r),
                 "despesa_bruta": round(_f(r["despesa_bruta"]), 2),
                 "sinistralidade_bruta": round(_f(r["sinistralidade_bruta"]), 2),
                 "beneficiarios_ativos": r["beneficiarios_ativos"],
                 "eventos": r["eventos"],
                 "custo_pmpm": round(_f(r["custo_pmpm"]), 2),
                 "receita_media_beneficiario": round(_f(r["receita_media_beneficiario"]), 2),
-                "variacao_pp_mes_anterior": round(f.variacao_pp(s, s_ant), 2) if s_ant is not None else None,
-                "variacao_pp_ano_anterior": round(f.variacao_pp(s, s_yoy), 2) if s_yoy is not None else None,
-                "acumulado_12m": round(f.acumulado_12m(despesas, receitas), 2) if i >= 11 else None,
+                "variacao_pp_mes_anterior": round(f.variacao_pp(s, s_ant), 2)
+                if s is not None and s_ant is not None else None,
+                "variacao_pp_ano_anterior": round(f.variacao_pp(s, s_yoy), 2)
+                if s is not None and s_yoy is not None else None,
+                "acumulado_12m": round(f.acumulado_12m(despesas, receitas), 2)
+                if i >= 11 and not div12 else None,
             }
         )
     return out
@@ -54,6 +75,19 @@ def indicador(session: Session, competencia: date, comparacao: str = "mes_anteri
         raise ValueError(f"Competência sem dados: {competencia}")
 
     comp_ant = competencia_comparacao(competencia, comparacao)
+    if _divergente(atu) or (comparacao != "acumulado_12m"
+                            and _divergente(repo.sinistralidade_mes(session, comp_ant))):
+        return {
+            "competencia": competencia.isoformat(), "comparacao": comparacao,
+            "competencia_comparacao": comp_ant.isoformat() if comparacao != "acumulado_12m" else None,
+            "sinistralidade_atual": None, "sinistralidade_comparacao": None, "variacao_pp": None,
+            "receita": None, "despesa": round(_f(atu["despesa"]), 2),
+            "despesa_bruta": round(_f(atu["despesa_bruta"]), 2), "sinistralidade_bruta": None,
+            "beneficiarios_ativos": atu["beneficiarios_ativos"],
+            "custo_pmpm": round(_f(atu["custo_pmpm"]), 2), "receita_media_beneficiario": None,
+            "eventos": atu["eventos"], "decomposicao_receita_despesa": None, **_fonte(atu),
+            "aviso": AVISO_RECEITA_DIVERGENTE, "metodologia": "",
+        }
     linhas = repo.serie_sinistralidade(session)
     idx = {r["competencia"]: i for i, r in enumerate(linhas)}
 
@@ -92,6 +126,7 @@ def indicador(session: Session, competencia: date, comparacao: str = "mes_anteri
         "receita_media_beneficiario": round(_f(atu["receita_media_beneficiario"]), 2),
         "eventos": atu["eventos"],
         "decomposicao_receita_despesa": dec,
+        **_fonte(atu),
         "metodologia": (
             "S = despesa/receita*100. Variação em pontos percentuais (p.p.). "
             "Decomposição num/den: efeito_despesa = ΔD/R0; efeito_receita = D1/R1 − D1/R0. "

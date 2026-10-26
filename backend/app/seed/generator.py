@@ -730,13 +730,24 @@ def wipe_dados(session: Session, tenant_id: str) -> None:
     plane (tenants, usuários…), em `regras_alerta` (configuração do gestor) nem no
     calendário global `competencias` (compartilhado).
     """
-    from app.models import AggContratoCompetencia, ReceitaContrato
+    from app.models import (
+        AggContratoCompetencia,
+        BeneficiarioVinculo,
+        Empresa,
+        EmpresaContrato,
+        Fatura,
+        FaturaItem,
+        PrecoContratado,
+        Recebimento,
+        ReceitaReconhecida,
+    )
 
     for model in (
         AggCompetenciaDimensao, AggPrestadorCompetencia, AggBeneficiarioCompetencia,
-        AggContratoCompetencia, AggSinistralidadeCompetencia, ReceitaContrato,
-        EventoAssistencial, Receita, Beneficiario, PlanoContrato,
-        Prestador, Procedimento, Diagnostico, Especialidade, Contrato, Plano,
+        AggContratoCompetencia, AggSinistralidadeCompetencia, Recebimento, FaturaItem, Fatura,
+        ReceitaReconhecida, EventoAssistencial, Receita, BeneficiarioVinculo, PrecoContratado, Beneficiario,
+        EmpresaContrato, PlanoContrato,
+        Prestador, Procedimento, Diagnostico, Especialidade, Contrato, Empresa, Plano,
         Regiao, CenarioGabarito, SeedManifest,
     ):
         session.execute(delete(model).where(model.tenant_id == tenant_id))

@@ -44,7 +44,9 @@ DEMO_USERS: tuple[tuple[str, str, str | None, str | None, str | None], ...] = (
     ("leitor@vidaplena.example", "Leitor Vida Plena", DEFAULT_TENANT, "VIEWER", None),
     ("admin@horizonte.example", "Admin Horizonte", DEMO_TENANT_B, "TENANT_ADMIN", None),
 )
-DEMO_PLANS = {DEFAULT_TENANT: "ENTERPRISE", DEMO_TENANT_B: "BASIC"}
+DEMO_PLANS = {DEFAULT_TENANT: "ENTERPRISE", DEMO_TENANT_B: "BASIC",
+              # laboratórios sintéticos (se semeados): acessíveis ao super admin da plataforma
+              "w2h-cenarios": "ENTERPRISE", "w2h-financeiro": "ENTERPRISE"}
 
 
 def _senha_demo() -> str:

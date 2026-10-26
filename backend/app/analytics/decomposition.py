@@ -182,6 +182,21 @@ _METODOLOGIA_CONC = (
 )
 
 
+def _reconciliacao_base(contribs: list, s_ant: dict, s_atu: dict) -> dict:
+    soma_fatores = sum(c.delta for c in contribs)
+    var_liq = _f(s_atu["despesa_liquida"]) - _f(s_ant["despesa_liquida"])
+    d_copart = _f(s_atu["coparticipacao"]) - _f(s_ant["coparticipacao"])
+    return {
+        "base_fatores": "valor_pago (bruta − glosa)",
+        "base_variacao_despesa": "despesa líquida (bruta − glosa − coparticipação)",
+        "soma_fatores": round(soma_fatores, 2),
+        "variacao_despesa_liquida": round(var_liq, 2),
+        "delta_coparticipacao": round(d_copart, 2),
+        "ok": abs(soma_fatores - d_copart - var_liq) <= 0.05,
+        "nota": "Σ fatores − Δ coparticipação = Δ despesa líquida.",
+    }
+
+
 def explicar(
     session: Session,
     competencia: date,
@@ -265,6 +280,9 @@ def explicar(
         "concentracao_variacao_beneficiarios": concentracao_variacao_beneficiarios(
             session, competencia, comparacao, contrato_id
         ),
+        # Evolução V1 (aditivo): deixa explícito que os FATORES somam Δ Σvalor_pago (bruta −
+        # glosa) e o TOPO usa a despesa líquida — a diferença é a Δ coparticipação.
+        "reconciliacao_base": _reconciliacao_base(contribs, s_ant, s_atu),
         "metodologia": (
             "Contribuição_i = D_i,1 − D_i,0; participação_i = contribuição_i / ΔD_total "
             "(ou / Σ|Δ| quando há muito cancelamento). "

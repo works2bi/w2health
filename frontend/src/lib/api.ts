@@ -228,13 +228,42 @@ export interface ContratoResumo {
   n_beneficiarios_alto_custo: number;
   variacao_despesa_liquida_pct: number | null;
   variacao_custo_pmpm_pct: number | null;
+  // Consolidação do canônico V1
+  empresa: { id: number; nome: string } | null;
+  sinistralidade_contratual: SinistralidadeContratual;
+}
+
+/** Sinistralidade de contrato: só quando a Gold a publicou (receita reconhecida atribuída,
+ *  sem divergência, sem receita consolidada não detalhada da empresa). Senão, o motivo. */
+export interface SinistralidadeContratual {
+  disponivel: boolean;
+  valor: number | null;
+  receita_reconhecida: number | null;
+  despesa_liquida?: number;
+  motivo: string | null;
+  formula?: string;
+}
+
+export interface EmpresaResumo {
+  id: number;
+  codigo: string;
+  nome: string;
+  tipo: string | null;
+  n_contratos: number;
+  vidas: number;
+  despesa_liquida: number;
+  receita_contratos: number;
+  receita_consolidada_empresa: number;
+  receita_total: number;
+  sinistralidade_liquida: number | null;
+  motivo_sem_sinistralidade: string | null;
 }
 
 export interface ContratosLista {
   competencia: string;
   comparacao: string;
-  receita_disponivel: false;
-  aviso: string;
+  receita_disponivel: boolean;
+  aviso: string | null;
   total: number;
   itens: ContratoResumo[];
 }

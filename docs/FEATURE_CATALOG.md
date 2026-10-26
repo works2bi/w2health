@@ -21,9 +21,9 @@ Nenhuma regra de negócio lê o nome do plano. Backend bloqueia; frontend só ad
 |---|---|---|---|
 | `executive_overview` | Executive Overview | `/executive/overview` | router `executive` |
 | `loss_ratio_intelligence` | Loss Ratio Intelligence | indicador, evolução, explicação, drill, procedimentos | routers `sinistralidade`, `procedimentos` |
-| `financial_composition` | Loss Ratio Intelligence | `/sinistralidade/composicao` | rota |
-| `advanced_explanations` | Loss Ratio Intelligence | coortes FATO / HIPÓTESE / A INVESTIGAR (`/explain/.../causas`) | rota |
-| `contract_intelligence` | Contract Intelligence | `/analytics/contratos*`, `?contrato_id=`, dimensão `contrato`, catálogo de contratos | router + `contrato_id_dep` + dimensão |
+| `financial_composition` | Loss Ratio Intelligence | `/sinistralidade/composicao`; `/analytics/receitas/composicao` e `/analytics/receitas/reconciliacao` (Consolidação V1) | rota |
+| `advanced_explanations` | Loss Ratio Intelligence | coortes FATO / HIPÓTESE / A INVESTIGAR (`/explain/.../causas`); **investigação de custos** (`/analytics/investigacao`, Evolução V1 — sem `provider_intelligence` o detalhe por prestador é omitido; sem `beneficiary_intelligence`, as amostras de beneficiário) | rota |
+| `contract_intelligence` | Contract Intelligence | `/analytics/contratos*` (sinistralidade contratual quando há receita atribuída), `/analytics/empresas*`, `?contrato_id=` / `?empresa_id=`, dimensão `contrato`, catálogo de contratos | router + `contrato_id_dep` + dimensão |
 | `provider_intelligence` | Provider Intelligence | `/analytics/prestadores*`, dimensão `prestador`, concentração por prestador | router + dimensão + saneamento |
 | `beneficiary_intelligence` | Beneficiary Intelligence | `/analytics/beneficiarios*`, concentração da variação, amostras de beneficiários | router + rota + saneamento |
 | `insights` | Insights & Alerts | `/analytics/insights`, fatores de atenção da visão executiva | rota + executiva |

@@ -8,6 +8,7 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
+from app.analytics import baseline
 from app.analytics import formulas as f
 from app.analytics.periodo import competencia_comparacao
 from app.repositories import analytics_repo as repo
@@ -196,6 +197,40 @@ def anomalia_prestadores(session: Session, competencia: date) -> list[dict]:
     return achados
 
 
+def _custo_vs_pares(session: Session, id_prestador: int, tipo: str | None, competencia: date,
+                    top_proc: list[dict]) -> dict:
+    """Para os principais procedimentos do prestador: custo médio dele × mediana dos demais
+    prestadores do MESMO tipo que fizeram o MESMO procedimento no mês (≥ 3 pares).
+    Comparar dentro do procedimento evita confrontar perfis assistenciais incompatíveis."""
+    linhas = repo.custo_procedimentos_por_prestador(session, competencia, [t["id"] for t in top_proc])
+    itens = []
+    for t in top_proc:
+        meu = next((r for r in linhas if r["id_procedimento"] == t["id"]
+                    and r["id_prestador"] == id_prestador), None)
+        pares = [_f(r["despesa"]) / r["eventos"] for r in linhas
+                 if r["id_procedimento"] == t["id"] and r["id_prestador"] != id_prestador
+                 and r["tipo"] == tipo and r["eventos"]]
+        if meu is None or not meu["eventos"]:
+            continue
+        cm = _f(meu["despesa"]) / meu["eventos"]
+        if len(pares) < 3:
+            itens.append({"id_procedimento": t["id"], "procedimento": t["descricao"],
+                          "custo_medio": round(cm, 2), "n_pares": len(pares), "mediana_pares": None,
+                          "razao": None, "comparavel": False})
+            continue
+        med = statistics.median(pares)
+        itens.append({"id_procedimento": t["id"], "procedimento": t["descricao"],
+                      "custo_medio": round(cm, 2), "n_pares": len(pares),
+                      "mediana_pares": round(med, 2),
+                      "razao": round(cm / med, 3) if med > 0 else None, "comparavel": True})
+    return {
+        "itens": itens,
+        "metodologia": ("Custo médio do prestador no procedimento ÷ mediana dos prestadores do "
+                        "mesmo tipo que realizaram o mesmo procedimento no mês (mínimo 3 pares; "
+                        "abaixo disso a comparação não é feita)."),
+    }
+
+
 def detalhe(
     session: Session, id_prestador: int, competencia: date,
     comparacao: str = "mes_anterior", metodo: str = "bennet",
@@ -215,7 +250,18 @@ def detalhe(
     alvo_row = next((p for p in pares if p["id_prestador"] == id_prestador), None)
     z = _zscores(alvo_row, pares) if alvo_row else {}
 
+    serie_desp = [(r["competencia"], _f(r["despesa"])) for r in serie]
+    serie_cm = [(r["competencia"], _f(r["custo_medio"])) for r in serie if r["eventos"]]
+    historico = {
+        "despesa": baseline.comparar(serie_desp, competencia, indicador="despesa mensal do prestador"),
+        "custo_medio": baseline.comparar(serie_cm, competencia, indicador="custo médio por evento"),
+    }
+
     return {
+        # Evolução V1 (aditivo): histórico comparável e custo vs pares do MESMO procedimento
+        "historico": historico,
+        "custo_vs_pares_por_procedimento": _custo_vs_pares(session, id_prestador, info["tipo"],
+                                                           competencia, top_proc),
         "prestador": {
             "id": info["id"], "nome": info["nome"], "tipo": info["tipo"],
             "regiao": info["regiao"], "especialidade_principal": info["especialidade_principal"],

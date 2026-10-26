@@ -18,6 +18,20 @@ O diferencial não é calcular a sinistralidade (qualquer BI faz). É **explicar
 separar efeito frequência de efeito custo médio, achar os prestadores/procedimentos/
 beneficiários responsáveis e gerar insights derivados matematicamente dos dados.
 
+> **Evolução V1 — investigação de custos:** *por que* a despesa mudou — decomposição que
+> reconcilia exatamente (frequência, custo médio, mix de procedimentos e de prestadores,
+> perfil etário, intensidade, reajuste **só com tabela de preço**), baseline histórico, rede,
+> coortes de utilização e conclusões FATO/HIPÓTESE/INVESTIGAR. Ver
+> [docs/EVOLUCAO_V1_INVESTIGACAO_CUSTOS.md](docs/EVOLUCAO_V1_INVESTIGACAO_CUSTOS.md).
+> Laboratório de cenários: `docker compose exec backend python -m app.seed.cenarios_investigacao`.
+
+> **Consolidação do canônico V1:** plano → contrato → beneficiário com histórico; empresa
+> agrupando contratos; faturamento, recebimento e receita reconhecida separados (sem rateio);
+> sinistralidade de contrato/empresa só com receita identificada; reconciliação financeira.
+> Ver [docs/CONSOLIDACAO_CANONICO_V1.md](docs/CONSOLIDACAO_CANONICO_V1.md) e o layout
+> candidato [docs/MODELO_CANONICO_V1_OFICIAL_CANDIDATO.md](docs/MODELO_CANONICO_V1_OFICIAL_CANDIDATO.md).
+> Laboratório financeiro: `docker compose exec backend python -m app.seed.cenarios_financeiro`.
+
 > **v1.1** aprofunda a árvore de explicação: coortes de beneficiários com evidências
 > rotuladas Fato/Hipótese/A investigar, composição financeira (bruta/glosa/
 > coparticipação/líquida) e configuração de alertas. Ver [docs/V1.1.md](docs/V1.1.md).

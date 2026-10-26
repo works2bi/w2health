@@ -1,0 +1,78 @@
+entity: empresa
+version: 1
+grain: "1 linha por empresa (pessoa jurídica que agrupa contratos empresariais/coletivos)"
+primary_key: [tenant_id, id_empresa]
+business_keys:
+  - [tenant_id, codigo]
+load_strategy: UPSERT
+watermark_column: source_updated_at
+updated_at_column: source_updated_at
+deduplication_strategy: "business_key"
+fields:
+  - name: tenant_id
+    type: string
+    nullable: false
+    required_for: [ALL]
+    classification: internal
+    description: "Cliente."
+    example: "operadora-alfa"
+    typical_source: "constante"
+    transformation: "literal"
+    quality_rules: [tenant_id_ausente]
+  - name: id_empresa
+    type: bigint
+    nullable: false
+    required_for: [contract]
+    classification: internal
+    description: "Surrogate key."
+    example: 7
+    typical_source: "gerado"
+    transformation: "surrogate"
+    quality_rules: []
+  - name: codigo
+    type: string
+    nullable: false
+    required_for: [contract]
+    classification: operational
+    description: "Código da empresa na operadora. Único por tenant. NÃO é CNPJ."
+    example: "EMP-001"
+    typical_source: "cadastro comercial"
+    transformation: "-"
+    quality_rules: []
+  - name: nome
+    type: string
+    nullable: false
+    required_for: []
+    classification: operational
+    description: "Nome/razão social de exibição (pode ser mascarado)."
+    example: "Empresa Alfa"
+    typical_source: "cadastro comercial"
+    transformation: "-"
+    quality_rules: []
+  - name: tipo
+    type: string
+    nullable: true
+    required_for: []
+    classification: operational
+    description: "empresarial | adesao | associacao | entidade_classe | outro."
+    example: "empresarial"
+    typical_source: "cadastro comercial"
+    transformation: "normalizar"
+    quality_rules: []
+  - name: status
+    type: string
+    nullable: true
+    required_for: []
+    classification: operational
+    description: "ativa | inativa."
+    example: "ativa"
+    typical_source: "cadastro comercial"
+    transformation: "normalizar"
+    quality_rules: []
+metadata_fields: [tenant_id, source_system, source_entity, source_record_id, ingestion_id,
+                  ingestion_timestamp, source_updated_at, reference_date, raw_payload_hash]
+notes: >
+  OPCIONAL (Consolidação do canônico V1). Empresa NÃO é um nível fixo entre plano e contrato:
+  agrupa contratos por `empresa_contrato` (histórico). Identificador fiscal não é exigido
+  para o funcionamento analítico; se uma integração futura precisar, segue a política de
+  proteção de dados (docs/LGPD_TECHNICAL_CONTROLS.md).

@@ -109,3 +109,60 @@ sem nenhum cenário financeiro atuando).
 cobrindo os 13 cenários (S1 tem 2: frequência e concentração em 3 prestadores).
 `tests/test_cohorts.py` valida a análise de coortes (v1.1) contra os cenários S1/S8.
 Ver [ANALYTICS_ENGINE.md](ANALYTICS_ENGINE.md), [V1.1.md](V1.1.md) e [DEMO.md](DEMO.md).
+
+## Evolução V1 — investigação de custos
+
+**Massa Vida Plena:** nenhum evento muda. O seed passa a (1) gravar o vínculo da competência
+em cada evento (`id_contrato`/`id_plano` = vínculo do beneficiário — idêntico ao que a Gold
+já usava) e (2) criar **tabelas de preço** vigentes desde o início da janela para os pares
+prestador × procedimento de hospitais e laboratórios, no mesmo valor que o gerador usa
+(`custo_base × nivel_preco` por unidade). Como a tabela não muda, o degrau de +30% do `s7`
+aparece corretamente como "custo unitário observado, **sem** evidência de reajuste".
+
+**Laboratório de cenários** (`app/seed/cenarios_investigacao.py`, tenant `w2h-cenarios`,
+`python -m app.seed.cenarios_investigacao`): tenant próprio para não alterar os totais dos
+quais os 19 cenários acima dependem. Um contrato por cenário, preços fixos (sem ruído),
+contagens controladas na comparação (mai/2026) e no alvo (jun/2026); histórico jan/2025–
+abr/2026 com variação Poisson. O motor só recebe `contrato_id`.
+
+| Código | Contrato | O que é plantado | Resultado esperado (teste) |
+|---|---|---|---|
+| `inv01_frequencia` | CEN-01 | todas as células +40% | frequência = 40% da bruta-base; mix e custo ≈ 0 |
+| `inv02_custo_medio` | CEN-02 | valores +15%, sem tabela | custo unitário = 15% da bruta-base; preço contratual **não calculável**; hipótese + investigar |
+| `inv03_migracao_hospital` | CEN-03 | internação/cirurgia migram para hospital 1,6× mais caro | mix de prestadores = R$ 44.100; transferência para Hospital Beta |
+| `inv04_mix_procedimentos` | CEN-04 | −30 consultas, +30 cirurgias (total igual) | mix de procedimentos = R$ 212.256; frequência ≈ 0 |
+| `inv05_recorrentes` | CEN-05 | 30 beneficiários recorrentes triplicam fisioterapia | ≥ 90% da variação na coorte recorrente; hipótese sem linguagem clínica |
+| `inv06_perfil` | CEN-06 | entram 125 beneficiários de 60–69 anos (taxa 2,5×) | população + perfil etário = Δ bruta; frequência ≈ 0 |
+| `inv07_reajuste_tabela` | CEN-07 | tabela +10% (4 pares) em jun/2026 | preço contratual = R$ 18.350; 4 mudanças de tabela de +10% |
+| `inv08_defasagem` | CEN-08 | 10 contas de abr/2026 apresentadas em jun/2026 | Δ defasada = Δ líquida; hipótese de apresentação tardia |
+| `inv09_reducao` | CEN-09 | todas as células −40% | frequência = −40% da bruta-base |
+| `inv10_insuficiente` | CEN-10 | 6 vidas, 2 competências, 1 cirurgia | sem hipóteses; "dados insuficientes" e "histórico insuficiente" |
+
+Testes: `tests/test_cenarios_investigacao.py`.
+
+## Consolidação do canônico V1 — laboratório cadastral e financeiro
+
+`app/seed/cenarios_financeiro.py` (tenant `w2h-financeiro`, `python -m app.seed.cenarios_financeiro`):
+43 beneficiários, jan–jun/2026, valores redondos (PL-A R$ 300, PL-B R$ 500 por vida-mês;
+consulta R$ 100; exame R$ 50). A massa **Vida Plena** permanece só com receita legada por plano
+(prova de compatibilidade).
+
+| # | Cenário | Onde | Verificado |
+|---|---|---|---|
+| 1 | empresa com múltiplos contratos | EMP-ALFA (CT-A1, CT-A2) | sinistralidade da empresa 1.800/6.400 em abr |
+| 2 | contrato com múltiplos planos | CT-A1 (PL-A, PL-B) | receita jan 1.800 + 2.000 |
+| 3 | faturamento direto por contrato | FAT-AAAAMM-CT-A* | faturado em M−1, reconhecido em M |
+| 4 | faturamento consolidado por empresa | FAT-AAAAMM-EMP-BETA | unidade empresa, 2 contratos |
+| 5 | receita de empresa com detalhamento | EMP-BETA | sinistralidade de CT-B1 publicada |
+| 6 | receita de empresa sem detalhamento | EMP-GAMA | nível empresa, sem rateio; contratos sem sinistralidade; empresa 1.100/4.100 |
+| 7 | beneficiário mudando de contrato | B-X (CT-A1 → CT-A2 em 01/04) | eventos antes/depois em contratos diferentes |
+| 8 | beneficiário mudando de plano | B-Y (PL-A → PL-B em 01/04) | plano do evento pela data |
+| 9 | despesa antes e depois da mudança | exames de B-X em fev e mai | CT-A1 fev 1.050; CT-A2 mai 950; reconstruir a Gold não reclassifica |
+| 10 | vidas históricas | CT-A1 10→9, CT-A2 8→9, CT-B1 6→5 | vínculo vigente no dia 1 |
+| 11 | receita sem correspondência cadastral | `CT-INEXISTENTE` (R$ 250/mês) | não atribuída; conta na operadora, não em contrato |
+| 12 | contrato sem receita atribuível | CT-SEM | "Receita por contrato indisponível" + motivo |
+
+Também: B-Z com vínculo encerrado e atendimento posterior (despesa não atribuída, explicada);
+acréscimo de juros (faturado ≠ reconhecido); recebimento parcial e fatura não recebida
+(recebido ≠ faturado). Testes: `tests/test_cenarios_financeiro.py`.
+

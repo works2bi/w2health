@@ -22,21 +22,29 @@ from app.models.catalog import (
     Especialidade,
     Plano,
     PlanoContrato,
+    PrecoContratado,
     Prestador,
     Procedimento,
     Regiao,
 )
 from app.models.config import RegraAlerta
 from app.models.events import EventoAssistencial
+from app.models.financeiro import (
+    Empresa,
+    EmpresaContrato,
+    Fatura,
+    FaturaItem,
+    Recebimento,
+    ReceitaReconhecida,
+)
 from app.models.jobs import PipelineJob, WorkerHeartbeat
-from app.models.membership import Beneficiario, Competencia, Receita
+from app.models.membership import Beneficiario, BeneficiarioVinculo, Competencia, Receita
 from app.models.platform import (
     CapabilityReadiness,
     DataQualityResult,
     IngestionRun,
     PipelineRun,
     RawObject,
-    ReceitaContrato,
     ReconciliationResult,
     SourceConnection,
     SourceEntity,
@@ -69,14 +77,22 @@ __all__ = [
     "Plano",
     "Contrato",
     "PlanoContrato",
+    "PrecoContratado",
     "Especialidade",
     "Procedimento",
     "Prestador",
     "Diagnostico",
     "Competencia",
     "Beneficiario",
+    "BeneficiarioVinculo",
     "Receita",
     "EventoAssistencial",
+    "Empresa",
+    "EmpresaContrato",
+    "Fatura",
+    "FaturaItem",
+    "Recebimento",
+    "ReceitaReconhecida",
     "AggSinistralidadeCompetencia",
     "AggCompetenciaDimensao",
     "AggPrestadorCompetencia",
@@ -91,7 +107,6 @@ __all__ = [
     "IngestionRun",
     "PipelineRun",
     "DataQualityResult",
-    "ReceitaContrato",
     # Control plane — Fundação SaaS V1
     "User",
     "UserTenant",

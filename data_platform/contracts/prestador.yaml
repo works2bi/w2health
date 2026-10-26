@@ -54,7 +54,7 @@ fields:
     nullable: true
     required_for: []
     classification: operational
-    description: "hospital | clinica | laboratorio | pronto_atendimento | consultorio."
+    description: "hospital | clinica | laboratorio | pronto_atendimento | consultorio | profissional (pessoa física). Base da comparação com pares do mesmo tipo (Evolução V1)."
     example: "hospital"
     typical_source: "rede credenciada"
     transformation: "normalizar"

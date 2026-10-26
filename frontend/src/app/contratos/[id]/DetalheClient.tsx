@@ -3,7 +3,9 @@
 import Link from "next/link";
 
 import { MiniSeries } from "@/components/charts";
+import { InvestigacaoPanel } from "@/components/InvestigacaoPanel";
 import { Card, DataState, EfeitoBadge, Stat } from "@/components/ui";
+import type { SinistralidadeContratual } from "@/lib/api";
 import { filtersQuery, useFilters } from "@/lib/filters";
 import { fmtBRL, fmtBRLCompact, fmtNum, fmtPct } from "@/lib/format";
 import { useApi } from "@/lib/useApi";
@@ -11,8 +13,9 @@ import { useRouteId } from "@/lib/useRouteId";
 
 interface Detalhe {
   contrato: { id: number; nome: string; tipo: string; plano: string; vidas_alvo: number };
-  receita_disponivel: false;
-  aviso: string;
+  receita_disponivel: boolean;
+  aviso: string | null;
+  sinistralidade_contratual: SinistralidadeContratual;
   kpis: {
     vidas: number;
     despesa_bruta: number;
@@ -82,12 +85,23 @@ export default function ContratoDetalhePage() {
               </p>
             </header>
 
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-              ⚠️ {data.aviso}
-            </div>
+            {data.aviso && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+                ⚠️ {data.aviso}
+              </div>
+            )}
 
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <Stat label="Vidas" value={fmtNum(data.kpis.vidas)} />
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+              <Stat
+                label="Sinistralidade contratual"
+                value={data.sinistralidade_contratual.disponivel ? fmtPct(data.sinistralidade_contratual.valor) : "—"}
+                hint={
+                  data.sinistralidade_contratual.disponivel
+                    ? `receita reconhecida ${fmtBRLCompact(data.sinistralidade_contratual.receita_reconhecida)}`
+                    : `indisponível: ${data.sinistralidade_contratual.motivo ?? ""}`
+                }
+              />
+              <Stat label="Vidas" value={fmtNum(data.kpis.vidas)} hint="pelo vínculo vigente no 1º dia" />
               <Stat
                 label="Despesa líquida"
                 value={`${fmtBRLCompact(data.kpis.despesa_liquida)}`}
@@ -189,6 +203,8 @@ export default function ContratoDetalhePage() {
                 </ul>
               </Card>
             )}
+
+            <InvestigacaoPanel contratoId={String(id)} titulo="Por que a despesa do contrato mudou?" />
 
             {data.alertas.length > 0 && (
               <Card title={`Alertas do contrato (${data.alertas.length})`}>

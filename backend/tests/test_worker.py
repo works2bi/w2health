@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import os
 import threading
 from datetime import date
 from pathlib import Path
@@ -112,6 +113,33 @@ def worker(monkeypatch):
     w = Worker(worker_id="pytest-wk")
     monkeypatch.setattr(w, "backoff", lambda attempt: 0)  # retry imediato nos testes
     return w
+
+
+def _bloqueios(wk) -> list[dict]:
+    """Diagnóstico: quem está esperando quem no banco de isolamento (pg_blocking_pids)."""
+    with wk["iso"].owner() as s:
+        return [dict(r) for r in s.execute(text(
+            "SELECT pid, usename, application_name, state, wait_event_type, wait_event, "
+            "now() - xact_start AS em_transacao, pg_blocking_pids(pid) AS bloqueado_por, "
+            r"left(regexp_replace(query, '\s+', ' ', 'g'), 160) AS consulta "
+            "FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() "
+            "")).mappings()]
+
+
+def _pilhas(threads) -> dict:
+    """Diagnóstico: pilha Python de cada thread ainda viva + estado do pool do pipeline."""
+    import sys
+    import traceback
+
+    from app.db.pipeline import get_pipeline_engine
+
+    frames = sys._current_frames()
+    marca = f"{os.sep}app{os.sep}"  # só os quadros do código da aplicação
+    out = {t.name: "".join(f for f in traceback.format_stack(frames[t.ident]) if marca in f)[-3000:]
+           for t in threads if t.ident in frames}
+    out["pool"] = get_pipeline_engine().pool.status()
+    out["outras_threads"] = [t.name for t in threading.enumerate()]
+    return out
 
 
 def _limpa_fila(wk):
@@ -501,6 +529,16 @@ def test_cargas_concorrentes_a_b_isoladas_e_processadas_uma_vez(wk, tmp_path_fac
         t.start()
     for t in ts:
         t.join(120)
+    # Consolidação V1 — causas da intermitência, medidas e corrigidas:
+    # 1) as duas publicações se serializavam no calendário GLOBAL `competencias` (produto —
+    #    ver test_calendario_global_nao_serializa_publicacoes);
+    # 2) sob a carga da suíte completa, commits esperavam o fsync do WAL do disco virtual
+    #    (wait_event = WALSync) — bancos de teste efêmeros agora sem synchronous_commit
+    #    (conftest.recreate_database). Se um worker não terminar, a falha traz as pilhas e
+    #    as sessões do banco em vez de aparecer como "job ainda RUNNING".
+    vivos = [t for t in ts if t.is_alive()]
+    assert not vivos, (f"worker não terminou dentro do prazo — pilhas: {_pilhas(vivos)} — "
+                       f"sessões no banco: {_bloqueios(wk)}")
     assert not erros
     for r, t in ((ra, WA), (rb, WB)):
         j = _job(wk, r["job_id"])
@@ -650,3 +688,42 @@ def test_lease_e_renovado_durante_passo_longo(wk, monkeypatch, tmp_path):
     assert vistos and all(vistos), vistos  # o lease nunca venceu durante o passo
     j = _job(wk, r["job_id"])
     assert j["status"] == "SUCCESS" and j["attempts"] == 1
+
+
+def test_calendario_global_nao_serializa_publicacoes(iso_env):
+    """Causa raiz do teste intermitente acima: o Silver gravava o calendário GLOBAL
+    (`competencias`) DENTRO da transação de publicação — uma segunda carga com os mesmos
+    meses esperava a primeira commitar. Agora o calendário é gravado numa transação própria:
+    com uma publicação ABERTA que já registrou o mês, outra conexão grava o mesmo mês sem
+    esperar (lock_timeout curto prova a ausência de bloqueio)."""
+    from datetime import date
+
+    from app.data_platform.context import PipelineContext
+    from app.data_platform.silver import SilverLoader
+    from app.db.pipeline import PipelineSession
+    from app.db.tenant_scope import bind_tenant
+
+    mes = date(2031, 7, 1)  # mês ainda inexistente no calendário
+    with iso_env.owner() as s:
+        s.execute(text("DELETE FROM competencias WHERE competencia = :m"), {"m": mes})
+        s.commit()
+    pub = PipelineSession()
+    try:
+        bind_tenant(pub, WA)
+        pub.execute(text("SELECT 1"))  # transação de publicação ABERTA
+        SilverLoader(pub, PipelineContext(WA, None, "pytest"), "teste").ensure_competencias({mes})
+        with iso_env.owner() as outra:
+            outra.execute(text("SET LOCAL lock_timeout = '2s'"))
+            outra.execute(text(
+                "INSERT INTO competencias (competencia, ano, mes, mes_nome, trimestre, is_inverno) "
+                "VALUES (:m, 2031, 7, 'Julho', 3, true) ON CONFLICT DO NOTHING"), {"m": mes})
+            outra.commit()
+        with iso_env.owner() as s:  # visível fora da publicação ainda aberta
+            assert s.execute(text("SELECT count(*) FROM competencias WHERE competencia = :m"),
+                             {"m": mes}).scalar_one() == 1
+    finally:
+        pub.rollback()
+        pub.close()
+        with iso_env.owner() as s:
+            s.execute(text("DELETE FROM competencias WHERE competencia = :m"), {"m": mes})
+            s.commit()

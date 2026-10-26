@@ -31,6 +31,7 @@ from app.seed.generator import (
     load_catalogos,
     wipe_dados,
 )
+from app.seed.vinculos_precos import gerar_precos_contratados, vincular_eventos
 
 
 def run_seed(
@@ -105,9 +106,14 @@ def run_seed(
         session.add_all(gabarito_rows)
         session.flush()
 
+    # Evolução V1: vínculo da competência no evento + tabelas de preço (nenhum valor muda)
+    vincular_eventos(session, cfg.tenant_id)
+    n_precos = gerar_precos_contratados(session, cfg.tenant_id, cfg.inicio)
+    log(f"  vínculo nos eventos + {n_precos} preços contratados")
+
     # Estatísticas do planner após a carga em massa (COPY) — sem isto, com vários tenants
     # no mesmo banco, a agregação pode escolher planos muito ruins (mesmo resultado, 20x+ lento).
-    for tabela in ("beneficiarios", "eventos_assistenciais", "receitas"):
+    for tabela in ("beneficiarios", "eventos_assistenciais", "receitas", "precos_contratados"):
         session.execute(text(f"ANALYZE {tabela}"))
 
     log("reconstruindo camada analítica...")

@@ -5,9 +5,10 @@ contratos, prestadores etc. As chaves de negócio (`codigo`, `cid`) são únicas
 **por tenant** — `(tenant_id, codigo)` —, nunca globalmente.
 """
 
+from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -128,6 +129,32 @@ class Prestador(TenantMixin, LineageMixin, Base):
 
     regiao: Mapped[Regiao] = relationship()
     especialidade_principal: Mapped[Especialidade] = relationship()
+
+
+class PrecoContratado(TenantMixin, LineageMixin, Base):
+    """Preço unitário contratado prestador × procedimento, com vigência (Evolução V1).
+
+    Entidade OPCIONAL: é a única evidência que permite afirmar "reajuste de preço". Sem
+    ela o motor fala apenas em "aumento de custo unitário observado". Vigência fechada à
+    esquerda e aberta à direita: vale de `vigencia_inicio` até o dia anterior a
+    `vigencia_fim` (nulo = vigente). Não é um módulo de negociação — só o valor vigente.
+    """
+
+    __tablename__ = "precos_contratados"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id_prestador", "id_procedimento", "vigencia_inicio",
+                         name="uq_precos_tenant_prest_proc_inicio"),
+        Index("ix_precos_tenant_proc_prest", "tenant_id", "id_procedimento", "id_prestador"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    id_prestador: Mapped[int] = mapped_column(ForeignKey("prestadores.id"))
+    id_procedimento: Mapped[int] = mapped_column(ForeignKey("procedimentos.id"))
+    vigencia_inicio: Mapped[date] = mapped_column(Date)
+    vigencia_fim: Mapped[date | None] = mapped_column(Date, nullable=True)
+    valor_unitario: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    # tabela | pacote | diaria | honorario | outro — informativo (não entra no cálculo)
+    tipo_remuneracao: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
 
 class Diagnostico(TenantMixin, LineageMixin, Base):

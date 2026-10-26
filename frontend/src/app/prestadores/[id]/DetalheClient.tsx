@@ -18,6 +18,67 @@ interface Detalhe {
   principais_procedimentos: { id: number; descricao: string; grupo: string; eventos: number; despesa: number; custo_medio: number }[];
   concentracao: { top_k_share: Record<string, number>; gini: number; pareto_frac: number };
   comparacao_pares: { n_pares: number; zscores: Record<string, number>; fora_padrao: string[] };
+  historico?: Record<string, Hist>;
+  custo_vs_pares_por_procedimento?: {
+    itens: { id_procedimento: number; procedimento: string; custo_medio: number; n_pares: number; mediana_pares: number | null; razao: number | null; comparavel: boolean }[];
+    metodologia: string;
+  };
+}
+
+interface Hist {
+  disponivel: boolean;
+  valor_atual?: number;
+  periodo_anterior?: { disponivel: boolean; desvio_pct?: number | null };
+  ano_anterior?: { disponivel: boolean; desvio_pct?: number | null };
+  media_historica?: { disponivel: boolean; n_competencias: number; desvio_pct?: number | null; desvio_padronizado?: number | null };
+  classificacao?: string;
+  limitacoes?: string[];
+}
+
+const CLASSE: Record<string, string> = {
+  excepcional: "excepcional",
+  dentro_do_padrao: "dentro do padrão",
+  sazonal: "sazonal",
+  indeterminado: "histórico insuficiente",
+};
+
+function HistoricoCard({ h }: { h: Record<string, Hist> }) {
+  const cmp = (c?: { disponivel: boolean; desvio_pct?: number | null }) =>
+    c?.disponivel ? fmtSignedPct(c.desvio_pct ?? null) : "sem dados";
+  const linhas: [string, Hist | undefined][] = [["Despesa mensal", h.despesa], ["Custo médio por evento", h.custo_medio]];
+  return (
+    <Card title="Comparação com o próprio histórico">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs uppercase text-slate-400">
+            <th className="py-1" />
+            <th className="py-1 text-right">vs mês anterior</th>
+            <th className="py-1 text-right">vs ano anterior</th>
+            <th className="py-1 text-right">vs média histórica</th>
+            <th className="py-1 text-right">Leitura</th>
+          </tr>
+        </thead>
+        <tbody>
+          {linhas.map(([rot, x]) => (
+            <tr key={rot} className="border-b border-slate-50">
+              <td className="py-1.5 text-slate-600">{rot}</td>
+              <td className="py-1.5 text-right tabular-nums">{cmp(x?.periodo_anterior)}</td>
+              <td className="py-1.5 text-right tabular-nums">{cmp(x?.ano_anterior)}</td>
+              <td className="py-1.5 text-right tabular-nums">
+                {x?.media_historica?.disponivel
+                  ? `${fmtSignedPct(x.media_historica.desvio_pct ?? null)} (${x.media_historica.n_competencias} meses)`
+                  : "insuficiente"}
+              </td>
+              <td className="py-1.5 text-right text-xs">{CLASSE[x?.classificacao ?? "indeterminado"]}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {h.despesa?.limitacoes?.length ? (
+        <p className="mt-2 text-xs text-slate-400">{h.despesa.limitacoes.join(" · ")}</p>
+      ) : null}
+    </Card>
+  );
 }
 
 export default function PrestadorDetalhePage() {
@@ -88,6 +149,30 @@ export default function PrestadorDetalhePage() {
           <Card title="Evolução mensal do custo">
             <MiniSeries serie={d.data.serie} dataKey="despesa" />
           </Card>
+
+          {d.data.historico && <HistoricoCard h={d.data.historico} />}
+
+          {d.data.custo_vs_pares_por_procedimento && d.data.custo_vs_pares_por_procedimento.itens.length > 0 && (
+            <Card title="Custo vs prestadores comparáveis (mesmo procedimento, mesmo tipo)">
+              <table className="w-full text-sm">
+                <tbody>
+                  {d.data.custo_vs_pares_por_procedimento.itens.map((p) => (
+                    <tr key={p.id_procedimento} className="border-b border-slate-50">
+                      <td className="py-1.5">{p.procedimento}</td>
+                      <td className="py-1.5 text-right tabular-nums">{fmtBRLCompact(p.custo_medio)}</td>
+                      <td className="py-1.5 text-right tabular-nums text-slate-500">
+                        {p.comparavel ? `mediana ${fmtBRLCompact(p.mediana_pares)} (${p.n_pares} pares)` : `${p.n_pares} par(es) — sem comparação`}
+                      </td>
+                      <td className={`py-1.5 text-right font-medium tabular-nums ${p.razao != null && p.razao >= 1.25 ? "text-amber-700" : "text-slate-500"}`}>
+                        {p.razao != null ? `${p.razao.toFixed(2)}×` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="mt-2 text-xs text-slate-400">{d.data.custo_vs_pares_por_procedimento.metodologia}</p>
+            </Card>
+          )}
 
           <Card title="Principais procedimentos">
             <table className="w-full text-sm">

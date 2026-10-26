@@ -25,6 +25,8 @@ _CHAVES_RESTRITAS: dict[str, str] = {
     "top_beneficiarios": BENEFICIARY,
     "prestadores_maior_despesa": PROVIDER,
     "prestadores_maior_contribuicao_variacao": PROVIDER,
+    # Evolução V1 — investigação de custos: detalhe da decomposição por prestador
+    "por_prestador": PROVIDER,
 }
 
 #: prefixo de rota de deep-link → feature exigida

@@ -1,0 +1,101 @@
+entity: preco_contratado
+version: 1
+grain: "1 linha por vigência de preço unitário contratado de um procedimento num prestador"
+primary_key: [tenant_id, id_preco]
+business_keys:
+  - [tenant_id, prestador_codigo, procedimento_codigo, vigencia_inicio]
+load_strategy: UPSERT
+watermark_column: source_updated_at
+updated_at_column: source_updated_at
+deduplication_strategy: "business_key"
+fields:
+  - name: tenant_id
+    type: string
+    nullable: false
+    required_for: [ALL]
+    classification: internal
+    description: "Cliente."
+    example: "operadora-alfa"
+    typical_source: "constante"
+    transformation: "literal"
+    quality_rules: [tenant_id_ausente]
+  - name: id_preco
+    type: bigint
+    nullable: false
+    required_for: [explicacao_preco]
+    classification: internal
+    description: "Surrogate key."
+    example: 501
+    typical_source: "gerado"
+    transformation: "surrogate"
+    quality_rules: []
+  - name: id_prestador
+    type: bigint
+    nullable: false
+    required_for: [explicacao_preco]
+    classification: internal
+    description: "FK prestador (executante) a quem o preço se aplica."
+    example: 3110
+    typical_source: "contrato de credenciamento / tabela de remuneração"
+    transformation: "lookup prestador.codigo -> id_prestador"
+    quality_rules: [fk_inexistente_prestador_codigo]
+  - name: id_procedimento
+    type: bigint
+    nullable: false
+    required_for: [explicacao_preco]
+    classification: internal
+    description: "FK procedimento."
+    example: 1162
+    typical_source: "tabela de remuneração (TUSS/CBHPM/própria)"
+    transformation: "lookup procedimento.codigo -> id_procedimento"
+    quality_rules: [fk_inexistente_procedimento_codigo]
+  - name: vigencia_inicio
+    type: date
+    nullable: false
+    required_for: [explicacao_preco]
+    classification: operational
+    description: "Início da vigência (inclusive). Uma nova vigência = um reajuste/renegociação."
+    example: "2026-06-01"
+    typical_source: "aditivo contratual / tabela vigente"
+    transformation: "-"
+    quality_rules: [vigencia_sobreposta]
+  - name: vigencia_fim
+    type: date
+    nullable: true
+    required_for: []
+    classification: operational
+    description: "Fim da vigência (EXCLUSIVO). Vazio = vigente."
+    example: null
+    typical_source: "aditivo contratual"
+    transformation: "-"
+    quality_rules: [vigencia_invertida, vigencia_sobreposta]
+  - name: valor_unitario
+    type: numeric
+    nullable: false
+    required_for: [explicacao_preco]
+    classification: operational
+    description: "Valor contratado por UNIDADE do item (mesma unidade de evento.quantidade)."
+    example: 1650.00
+    typical_source: "tabela de remuneração"
+    transformation: "-"
+    quality_rules: [preco_nao_positivo]
+  - name: tipo_remuneracao
+    type: string
+    nullable: true
+    required_for: []
+    classification: operational
+    description: "tabela | pacote | diaria | honorario | outro — informativo, não entra no cálculo."
+    example: "tabela"
+    typical_source: "contrato de credenciamento"
+    transformation: "normalizar para o vocabulário"
+    quality_rules: []
+metadata_fields: [tenant_id, source_system, source_entity, source_record_id, ingestion_id,
+                  ingestion_timestamp, source_updated_at, reference_date, raw_payload_hash]
+notes: >
+  OPCIONAL (Evolução V1 — investigação de custos). É a ÚNICA evidência aceita pelo motor para
+  afirmar "reajuste de preço": sem esta entidade, ou sem preço vigente nos DOIS períodos
+  comparados para um par prestador × procedimento, a variação de valor por unidade aparece
+  como "custo unitário observado (sem evidência de tabela)". Não é um módulo de negociação:
+  guarda só o valor vigente e o histórico de vigências. Vigências da mesma chave não podem se
+  sobrepor no arquivo (vigencia_sobreposta); a sobreposição com cargas anteriores não é
+  verificada nesta versão.

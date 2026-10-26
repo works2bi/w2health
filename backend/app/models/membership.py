@@ -66,6 +66,38 @@ class Beneficiario(TenantMixin, LineageMixin, Base):
     contrato: Mapped[Contrato] = relationship()
 
 
+class BeneficiarioVinculo(TenantMixin, LineageMixin, Base):
+    """Histórico de vínculo contratual do beneficiário (Evolução V1) — OPCIONAL.
+
+    Quando a origem informa, o Silver resolve contrato/plano de cada evento pela data do
+    atendimento (vigência fechada à esquerda, aberta à direita; `vigencia_fim` nulo =
+    vigente). Sem histórico, vale o vínculo atual do beneficiário no momento da carga —
+    que fica congelado no evento.
+    """
+
+    __tablename__ = "beneficiario_vinculos"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id_beneficiario", "vigencia_inicio",
+                         name="uq_vinculos_tenant_benef_inicio"),
+        ForeignKeyConstraint(
+            ["tenant_id", "id_contrato", "id_plano"],
+            ["planos_contratos.tenant_id", "planos_contratos.id_contrato",
+             "planos_contratos.id_plano"],
+            name="fk_vinculos_plano_contrato",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    id_beneficiario: Mapped[int] = mapped_column(ForeignKey("beneficiarios.id"), index=True)
+    id_contrato: Mapped[int] = mapped_column(ForeignKey("contratos.id"))
+    id_plano: Mapped[int] = mapped_column(ForeignKey("planos.id"))
+    vigencia_inicio: Mapped[date] = mapped_column(Date)
+    vigencia_fim: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Consolidação V1: ativo | suspenso | cancelado (vazio = ativo). Exposição conta só
+    # vazio/ativo — `suspenso` como exposição é pendência de negócio.
+    situacao: Mapped[str | None] = mapped_column(String(12), nullable=True)
+
+
 class Receita(TenantMixin, LineageMixin, Base):
     __tablename__ = "receitas"
     __table_args__ = (

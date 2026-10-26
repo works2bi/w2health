@@ -42,6 +42,10 @@ APP_INSERT_UPDATE_DATA_TABLES = frozenset({"source_connections"})
 PIPELINE_WRITABLE = frozenset({
     "regioes", "planos", "contratos", "planos_contratos", "especialidades", "procedimentos",
     "prestadores", "diagnosticos", "beneficiarios", "receitas", "eventos_assistenciais",
+    "precos_contratados", "beneficiario_vinculos",
+    # Consolidação do canônico V1 — cadastro de empresa e fatos financeiros da receita
+    "empresas", "empresas_contratos", "faturas", "fatura_itens", "recebimentos",
+    "receitas_reconhecidas",
     "agg_sinistralidade_competencia", "agg_competencia_dimensao", "agg_prestador_competencia",
     "agg_beneficiario_competencia", "agg_contrato_competencia",
     "ingestion_runs", "raw_objects", "pipeline_runs", "data_quality_results",

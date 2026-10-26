@@ -82,13 +82,44 @@ def recreate_database(dbname: str):
     base_url = _base_url()
     if not _db_disponivel(base_url):
         pytest.skip("PostgreSQL indisponível — testes de banco pulados")
-    admin = create_engine(base_url, isolation_level="AUTOCOMMIT")
-    with admin.connect() as c:
+    admin = create_engine(base_url, isolation_level="AUTOCOMMIT", connect_args=_CONNECT_ARGS)
+    with _conectar(admin) as c:
         c.execute(text(f'DROP DATABASE IF EXISTS "{dbname}" WITH (FORCE)'))
         c.execute(text(f'CREATE DATABASE "{dbname}"'))
+        # Banco de teste é EFÊMERO: sem espera de fsync do WAL a cada commit. Sob a carga da
+        # suíte completa (massas sintéticas grandes), o fsync do disco virtual do Docker
+        # Desktop chegou a segurar commits por >100 s — causa medida (wait_event = WALSync)
+        # da intermitência de test_cargas_concorrentes_a_b_isoladas_e_processadas_uma_vez.
+        # Só afeta os bancos criados aqui; produção mantém synchronous_commit padrão.
+        c.execute(text(f'ALTER DATABASE "{dbname}" SET synchronous_commit = off'))
     admin.dispose()
     url = base_url.rsplit("/", 1)[0] + "/" + dbname
-    return create_engine(url, future=True), url
+    engine = create_engine(url, future=True)
+    aquece = create_engine(url, connect_args=_CONNECT_ARGS)  # caminho até o banco novo
+    _conectar(aquece).close()
+    aquece.dispose()
+    return engine, url
+
+
+#: Conexão nova que trava no handshake (o proxy de porta do Docker Desktop aceita o TCP e
+#: não repassa ao PostgreSQL — medido com py-spy: `psycopg.wait_conn` parado em
+#: `recreate_database`, sem sessão no servidor, por ~30 min) falha rápido e é refeita.
+_CONNECT_ARGS = {"connect_timeout": 15}
+
+
+def _conectar(engine, tentativas: int = 5):
+    import time
+
+    from sqlalchemy.exc import OperationalError
+
+    for i in range(tentativas):
+        try:
+            return engine.connect()
+        except OperationalError:
+            if i == tentativas - 1:
+                raise
+            engine.dispose()
+            time.sleep(2)
 
 
 TEST_PASSWORD = "Teste-" + secrets.token_urlsafe(12)

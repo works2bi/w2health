@@ -86,7 +86,8 @@ def test_chave_de_negocio_e_composta_sem_colisao(db):
 
 def test_tabelas_v1_2_sao_tenant_aware():
     insp = {t for t in Base.metadata.tables}
-    for t in ("agg_contrato_competencia", "receitas_contrato", "ingestion_runs",
+    # `receitas_contrato` (layout v1.2) virou `receitas_reconhecidas` — Consolidação V1
+    for t in ("agg_contrato_competencia", "receitas_reconhecidas", "ingestion_runs",
               "pipeline_runs", "source_connections", "source_entities",
               "data_quality_results"):
         assert t in insp
