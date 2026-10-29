@@ -23,6 +23,7 @@ docs/PRODUCTION_DEPLOYMENT.md §Configuração.
 """
 
 import os
+import tempfile
 from functools import lru_cache
 
 from pydantic import Field, SecretStr, field_validator
@@ -130,6 +131,19 @@ class Settings(BaseSettings):
     upload_max_rows: int = Field(default=5_000_000, ge=1)
     # uploads por usuário por hora (proteção contra abuso/DoS acidental do pipeline)
     upload_rate_limit_per_hour: int = Field(default=30, ge=1, le=10_000)
+
+    # Envio de alertas por e-mail (Evolução, item 4). Sem SMTP_HOST o envio é SIMULADO:
+    # a mensagem vai para `notificacoes_outbox_dir` (.eml) e o envio fica com status "simulado".
+    smtp_host: str | None = Field(default=None)
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_user: str | None = Field(default=None)
+    smtp_password: SecretStr | None = Field(default=None)
+    smtp_starttls: bool = Field(default=True)
+    smtp_from: str = Field(default="W2Health <alertas@w2health.local>")
+    notificacoes_outbox_dir: str = Field(
+        default_factory=lambda: os.path.join(tempfile.gettempdir(), "w2health-outbox"))
+    # URL pública do frontend, para os links das mensagens
+    app_public_url: str = Field(default="http://localhost:3000")
 
     # Object storage S3-compatível (RAW_STORAGE_BACKEND=s3). Credenciais podem ficar vazias
     # para usar a cadeia padrão do SDK (perfil de instância / workload identity).

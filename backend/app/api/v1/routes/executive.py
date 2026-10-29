@@ -7,11 +7,11 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.analytics import completude, relatorio_mensal, sinistralidade
 from app.analytics import insights as insights_mod
-from app.analytics import sinistralidade
 from app.api.v1.routes._common import analytics_guard, comparacao_dep, competencia_dep
 from app.saas.feature_filters import filter_insights
 from app.security.deps import TenantContext, get_tenant_context, get_tenant_db
@@ -42,3 +42,24 @@ def overview(
         "gerado_de": "camada analítica (agg_*)",
     }
     return payload
+
+
+@router.get("/completude", summary="Completude da competência: preliminar/fechada, % recebido e IBNR")
+def completude_competencia(
+    competencia: date = Depends(competencia_dep),
+    db: Session = Depends(get_tenant_db),
+) -> dict:
+    return completude.da_competencia(db, competencia)
+
+
+@router.get("/relatorio-mensal", summary="Relatório mensal da diretoria (consolidado, imprimível em PDF)")
+def relatorio(
+    segmento: str = Query("medicina_de_grupo", description="Modalidade para o comparativo de mercado"),
+    competencia: date = Depends(competencia_dep),
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_tenant_db),
+) -> dict:
+    try:
+        return relatorio_mensal.montar(db, competencia, ctx.features, ctx.tenant_name, segmento)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e

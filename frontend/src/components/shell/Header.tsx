@@ -100,7 +100,7 @@ export function Header() {
   const analitica = Boolean(req?.tenant && req.permission === "analytics:read") && s.me?.tenant?.status === "ACTIVE";
 
   return (
-    <header className="border-b border-slate-200 bg-white">
+    <header className="no-print border-b border-slate-200 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3">
         <div>
           <Breadcrumbs />

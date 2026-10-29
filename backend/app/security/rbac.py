@@ -27,6 +27,8 @@ class Perm(StrEnum):
     # ---- regras de alerta (configuração operacional)
     ALERT_RULES_READ = "alert_rules:read"
     ALERT_RULES_WRITE = "alert_rules:write"
+    # ---- planos de ação (gestão da ação sobre insights/alertas)
+    ACTION_PLANS_WRITE = "action_plans:write"
     # ---- administração do PRÓPRIO tenant
     TENANT_USERS_READ = "tenant_users:read"
     TENANT_USERS_MANAGE = "tenant_users:manage"
@@ -45,7 +47,7 @@ class Perm(StrEnum):
 
 
 _VIEWER = frozenset({Perm.ANALYTICS_READ, Perm.ALERT_RULES_READ})
-_MANAGER = _VIEWER | {Perm.ALERT_RULES_WRITE}
+_MANAGER = _VIEWER | {Perm.ALERT_RULES_WRITE, Perm.ACTION_PLANS_WRITE}
 _TENANT_ADMIN = _MANAGER | {
     Perm.TENANT_USERS_READ,
     Perm.TENANT_USERS_MANAGE,

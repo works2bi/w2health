@@ -10,6 +10,7 @@
 
 import { FormEvent, useState } from "react";
 
+import { PadroesAns } from "@/components/admin/PadroesAns";
 import { TenantPicker } from "@/components/admin/TenantPicker";
 import {
   Button,
@@ -306,6 +307,8 @@ function TenantIntegracoes({ tenant }: { tenant: string }) {
         </DataState>
       </Card>
       <Upload base={base} fontes={(fontes.data?.itens ?? []).filter((f) => f.source_type === "FILE" && f.status === "ACTIVE")}
+        onDone={recarregar} />
+      <PadroesAns base={base} fontes={(fontes.data?.itens ?? []).filter((f) => f.configuration.mapping_id === "ans_padroes" && f.status === "ACTIVE")}
         onDone={recarregar} />
       <Card title="Execuções (ingestões)">
         <DataState isLoading={runs.isLoading && !runs.data} error={runs.error} empty={runs.data?.itens.length === 0}>

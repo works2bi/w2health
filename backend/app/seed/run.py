@@ -23,6 +23,7 @@ from app.db.session import AdminSessionLocal
 from app.db.tenant_scope import bind_tenant
 from app.models import RegraAlerta, SeedManifest, Tenant
 from app.seed.aggregate import rebuild_aggregations
+from app.seed.apresentacao import marcar_apresentacao
 from app.seed.config import SeedConfig
 from app.seed.generator import (
     generate_beneficiarios,
@@ -110,6 +111,10 @@ def run_seed(
     vincular_eventos(session, cfg.tenant_id)
     n_precos = gerar_precos_contratados(session, cfg.tenant_id, cfg.inicio)
     log(f"  vínculo nos eventos + {n_precos} preços contratados")
+    n_apr, n_pend = marcar_apresentacao(session, cfg.tenant_id, cfg.fim, cfg.carga_parcial)
+    log(f"  competência de apresentação em {n_apr} eventos; {n_pend} contas da última "
+        "competência ainda não apresentadas no corte (fora da carga)")
+    stats["total_eventos"] -= n_pend
 
     # Estatísticas do planner após a carga em massa (COPY) — sem isto, com vários tenants
     # no mesmo banco, a agregação pode escolher planos muito ruins (mesmo resultado, 20x+ lento).
@@ -125,6 +130,10 @@ def run_seed(
                      competencia_fim=cfg.fim)
 
     _seed_regras_alerta_default(session, cfg.tenant_id)
+    # referência de mercado ILUSTRATIVA (global) — só se nenhuma foi carregada ainda
+    from app.analytics.benchmark import garantir_ilustrativo
+
+    garantir_ilustrativo(session)
 
     manifest = SeedManifest(
         tenant_id=cfg.tenant_id,
@@ -204,6 +213,9 @@ def main() -> None:
     p.add_argument("--fim", type=_parse_month, default="2026-12")
     p.add_argument("--escala", type=float, default=1.0, dest="escala_eventos")
     p.add_argument("--no-cenarios", action="store_true")
+    p.add_argument("--carga-parcial", action="store_true",
+                   help="última competência sem as contas apresentadas após o corte "
+                        "(demo da completude)")
     p.add_argument("--tenant", default=SeedConfig.tenant_id, help="código do tenant sintético")
     p.add_argument("--tenant-name", default="Operadora Vida Plena")
     args = p.parse_args()
@@ -215,6 +227,7 @@ def main() -> None:
         fim=args.fim if isinstance(args.fim, date) else _parse_month(args.fim),
         escala_eventos=args.escala_eventos,
         aplicar_cenarios=not args.no_cenarios,
+        carga_parcial=args.carga_parcial,
         tenant_id=args.tenant,
     )
     with AdminSessionLocal() as session:

@@ -19,3 +19,26 @@ body {
   @apply bg-slate-100 text-slate-800;
   font-family: var(--font-sans);
 }
+
+/* Relatório mensal da diretoria (/relatorio) — "Gerar PDF" = imprimir sem o shell. */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+  .print-break {
+    break-before: page;
+  }
+  .print-avoid {
+    break-inside: avoid;
+  }
+}

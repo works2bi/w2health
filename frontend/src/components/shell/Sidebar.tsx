@@ -32,7 +32,7 @@ export function Sidebar() {
   const nome = b?.product_name ?? "W2Health Intelligence";
 
   return (
-    <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col self-start bg-tenant-primary text-slate-100">
+    <aside className="no-print sticky top-0 flex h-screen w-60 shrink-0 flex-col self-start bg-tenant-primary text-slate-100">
       <div className="flex h-16 items-center gap-3 border-b border-white/10 px-5">
         {logo ? (
           // eslint-disable-next-line @next/next/no-img-element

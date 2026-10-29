@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { CompletudeBanner } from "@/components/CompletudeBanner";
 import { CompositionCard } from "@/components/CompositionCard";
 import { EvolutionChart } from "@/components/charts";
 import { InsightChip } from "@/components/InsightCard";
@@ -56,6 +57,7 @@ export default function VisaoExecutivaPage() {
 
   return (
     <div className="space-y-6">
+      <CompletudeBanner />
       <DataState isLoading={ov.isLoading && !ov.data} error={ov.error}>
         {k && (
           <>

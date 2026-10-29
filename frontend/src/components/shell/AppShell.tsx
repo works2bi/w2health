@@ -87,12 +87,12 @@ function Gate({ children }: { children: ReactNode }) {
         <div className="flex flex-1">
           <Sidebar />
           <div className="flex min-w-0 flex-1 flex-col">
-            {s.me?.tenant?.is_synthetic && <DemoBanner />}
+            {s.me?.tenant?.is_synthetic && <div className="no-print"><DemoBanner /></div>}
             <Header />
             <main className="flex-1 p-6">
               <RouteGate>{children}</RouteGate>
             </main>
-            <footer className="border-t border-slate-200 px-6 py-3 text-center text-[11px] text-slate-400">
+            <footer className="no-print border-t border-slate-200 px-6 py-3 text-center text-[11px] text-slate-400">
               {s.me?.branding.product_name ?? "W2Health Intelligence"}
               {s.me?.tenant?.is_synthetic && " · Ambiente demonstrativo com dados sintéticos · Nenhum dado de pessoa real é utilizado."}
             </footer>

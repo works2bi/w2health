@@ -16,6 +16,7 @@ from app.models.analytics import (
     CenarioGabarito,
     SeedManifest,
 )
+from app.models.benchmark import BenchmarkMercado
 from app.models.catalog import (
     Contrato,
     Diagnostico,
@@ -37,6 +38,7 @@ from app.models.financeiro import (
     Recebimento,
     ReceitaReconhecida,
 )
+from app.models.gestao import AssinaturaAlerta, EnvioNotificacao, PlanoAcao
 from app.models.jobs import PipelineJob, WorkerHeartbeat
 from app.models.membership import Beneficiario, BeneficiarioVinculo, Competencia, Receita
 from app.models.platform import (
@@ -73,6 +75,10 @@ __all__ = [
     "PipelineJob",
     "WorkerHeartbeat",
     "RegraAlerta",
+    "BenchmarkMercado",
+    "PlanoAcao",
+    "AssinaturaAlerta",
+    "EnvioNotificacao",
     "Regiao",
     "Plano",
     "Contrato",

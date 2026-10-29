@@ -37,7 +37,7 @@ export function EvolutionChart({
         <LineChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
           <CartesianGrid stroke="#f1f5f9" vertical={false} />
           <XAxis dataKey="mes" tick={AXIS} interval="preserveStartEnd" minTickGap={20} />
-          <YAxis tick={AXIS} width={48} tickFormatter={(v) => `${v}%`} domain={["dataMin - 4", "dataMax + 4"]} />
+          <YAxis tick={AXIS} width={48} tickFormatter={(v: number) => `${Math.round(v)}%`} domain={["dataMin - 4", "dataMax + 4"]} />
           <Tooltip
             formatter={(v: number, n) => [fmtPct(v), n === "sinistralidade" ? "Sinistralidade" : "Acum. 12m"]}
             labelClassName="text-xs"

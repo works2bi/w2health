@@ -1,0 +1,113 @@
+# Pacote gerado a partir dos PADRÕES ANS (Evolução, item 6) — `app/data_platform/padroes_ans.py`.
+#
+#   TISS (XML de lote de guias)  → eventos, prestadores, procedimentos, especialidades (CBO)
+#   SIB  (XML de beneficiários)  → beneficiarios, planos, contratos, plano_contratos
+#
+# O conversor escreve os CSVs exatamente com estas colunas; daqui em diante é o pipeline
+# normal (mapping → DQ → Silver → Gold → reconciliação). Nome, CPF e CNS do beneficiário
+# NÃO são lidos (minimização — o código é o da operadora). Glosa e pagamento não vêm na
+# guia: valor_pago = apresentado até que o demonstrativo de análise de conta seja integrado.
+mapping_id: ans_padroes
+version: 1
+description: "Pacote convertido de TISS (guias) + SIB (beneficiários)."
+
+source_format:
+  type: csv
+  delimiter: ";"
+  encoding: utf-8
+  decimal_separator: "."
+  date_formats: ["%Y-%m-%d"]
+
+quality:
+  max_rejected_ratio: 0.02
+
+reconciliation:
+  financial_tolerance_abs: 0.00
+  count_tolerance_abs: 0
+
+entities:
+  - source_entity: especialidades
+    target_entity: especialidade
+    required: true
+    fields:
+      codigo: {source: codigo, normalize: [strip, upper]}
+      nome: {source: nome, normalize: [collapse_spaces]}
+      grupo: {source: grupo, normalize: [strip, lower]}
+
+  - source_entity: planos
+    target_entity: plano
+    required: true
+    fields:
+      codigo: {source: codigo, normalize: [strip, upper]}
+      nome: {source: nome, normalize: [collapse_spaces]}
+      segmentacao: {source: segmentacao, normalize: [strip, lower]}
+
+  - source_entity: contratos
+    target_entity: contrato
+    required: true
+    fields:
+      codigo: {source: codigo, normalize: [strip, upper]}
+      nome: {source: nome, normalize: [collapse_spaces]}
+      tipo: {source: tipo, normalize: [strip]}
+
+  - source_entity: plano_contratos
+    target_entity: plano_contrato
+    required: true
+    fields:
+      contrato_codigo: {source: contrato_codigo, normalize: [strip, upper]}
+      plano_codigo: {source: plano_codigo, normalize: [strip, upper]}
+
+  - source_entity: prestadores
+    target_entity: prestador
+    required: true
+    fields:
+      codigo: {source: codigo, normalize: [strip, upper]}
+      nome: {source: nome, normalize: [collapse_spaces]}
+      tipo_prestador: {source: tipo_prestador, normalize: [strip, lower]}
+      cidade: {source: cidade, normalize: [collapse_spaces]}
+      uf: {source: uf, normalize: [strip, upper]}
+      especialidade_codigo: {source: especialidade_codigo, normalize: [strip, upper]}
+
+  - source_entity: procedimentos
+    target_entity: procedimento
+    required: true
+    fields:
+      codigo: {source: codigo, normalize: [strip, upper]}
+      descricao: {source: descricao, normalize: [collapse_spaces]}
+      especialidade_codigo: {source: especialidade_codigo, normalize: [strip, upper]}
+      grupo_procedimento: {source: grupo_procedimento, normalize: [collapse_spaces]}
+
+  - source_entity: beneficiarios
+    target_entity: beneficiario
+    required: true
+    fields:
+      codigo: {source: codigo, normalize: [strip, upper]}
+      sexo: {source: sexo, normalize: [strip, upper]}
+      data_nascimento: {source: data_nascimento, type: date}
+      plano_codigo: {source: plano_codigo, normalize: [strip, upper]}
+      contrato_codigo: {source: contrato_codigo, normalize: [strip, upper]}
+      cidade: {source: cidade, normalize: [collapse_spaces]}
+      uf: {source: uf, normalize: [strip, upper]}
+      data_adesao: {source: data_adesao, type: date}
+      data_saida: {source: data_saida, type: date}
+
+  - source_entity: eventos
+    target_entity: evento_assistencial
+    required: true
+    load_strategy: COMPETENCIA_SNAPSHOT
+    fields:
+      source_record_id: {source: source_record_id, normalize: [strip]}
+      beneficiario_codigo: {source: beneficiario_codigo, normalize: [strip, upper]}
+      prestador_codigo: {source: prestador_codigo, normalize: [strip, upper]}
+      procedimento_codigo: {source: procedimento_codigo, normalize: [strip, upper]}
+      especialidade_codigo: {source: especialidade_codigo, normalize: [strip, upper]}
+      data_evento: {source: data_evento, type: date}
+      competencia: {source: data_evento, type: month}
+      competencia_apresentacao: {source: data_apresentacao, type: month}
+      numero_guia: {source: numero_guia, normalize: [strip]}
+      tipo_atendimento: {source: tipo_atendimento, normalize: [strip, lower]}
+      quantidade: {source: quantidade, type: int, default: 1}
+      valor_apresentado: {source: valor_apresentado, type: decimal}
+      valor_glosado: {source: valor_glosado, type: decimal, default: 0}
+      valor_pago: {source: valor_pago, type: decimal}
+      valor_coparticipacao: {source: valor_coparticipacao, type: decimal, default: 0}

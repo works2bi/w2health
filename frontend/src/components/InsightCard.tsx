@@ -5,6 +5,19 @@ import { useState } from "react";
 
 import { type Insight, insightHref } from "@/lib/api";
 import { corSeveridade } from "@/lib/format";
+import { useSession } from "@/lib/session";
+
+/** Link para abrir um plano de ação já com o alvo do insight (Evolução, item 3). */
+export function planoHref(i: Insight): string {
+  const p = new URLSearchParams({ novo: "1", titulo: i.titulo.slice(0, 160), origem_ref: i.id.slice(0, 160) });
+  const { dimensao, chave, competencia } = i.deep_link.params ?? {};
+  if (dimensao && chave) {
+    p.set("dimensao", dimensao);
+    p.set("chave", chave);
+  }
+  if (competencia) p.set("competencia", competencia);
+  return `/planos-acao?${p}`;
+}
 
 export function InsightChip({ insight }: { insight: Insight }) {
   return (
@@ -22,6 +35,7 @@ export function InsightChip({ insight }: { insight: Insight }) {
 
 export function InsightCard({ insight }: { insight: Insight }) {
   const [open, setOpen] = useState(false);
+  const { can, hasFeature } = useSession();
   return (
     <article className={`rounded-xl border p-4 ${corSeveridade(insight.severidade)}`}>
       <div className="flex items-start justify-between gap-3">
@@ -32,12 +46,19 @@ export function InsightCard({ insight }: { insight: Insight }) {
           </h3>
           <p className="mt-1 text-sm opacity-90">{insight.descricao}</p>
         </div>
-        <Link
-          href={insightHref(insight)}
-          className="shrink-0 rounded-md bg-white/70 px-2.5 py-1 text-xs font-medium hover:bg-white"
-        >
-          Investigar →
-        </Link>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <Link
+            href={insightHref(insight)}
+            className="rounded-md bg-white/70 px-2.5 py-1 text-xs font-medium hover:bg-white"
+          >
+            Investigar →
+          </Link>
+          {hasFeature("insights") && can("action_plans:write") && (
+            <Link href={planoHref(insight)} className="rounded-md px-2.5 py-1 text-xs font-medium underline-offset-2 hover:underline">
+              Criar plano de ação
+            </Link>
+          )}
+        </div>
       </div>
       <button
         type="button"

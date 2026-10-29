@@ -34,7 +34,9 @@ _EXPR = "tenant_id = current_setting('app.tenant_id', true)"
 _ROLE = re.compile(r"^[a-z_][a-z0-9_]{2,62}$")
 
 #: tabelas do data plane em que o papel de runtime também ESCREVE
-APP_WRITABLE_DATA_TABLES = frozenset({"regras_alerta", "capability_readiness"})
+APP_WRITABLE_DATA_TABLES = frozenset({"regras_alerta", "capability_readiness",
+                                      # Evolução — gestão da ação e envio de alertas
+                                      "planos_acao", "assinaturas_alerta", "envios_notificacao"})
 #: escrita do runtime sem DELETE (cadastro de fontes pela administração)
 APP_INSERT_UPDATE_DATA_TABLES = frozenset({"source_connections"})
 
@@ -55,7 +57,9 @@ PIPELINE_WRITABLE = frozenset({
 APPEND_ONLY = frozenset({"audit_logs"})
 #: control plane com privilégio reduzido para o runtime (Fase 3): a API só LÊ a fila
 #: (retry/cancel administrativos também passam pelo papel de pipeline, com transição condicional).
-APP_CONTROL_PRIVS = {"pipeline_jobs": "SELECT", "worker_heartbeats": "SELECT"}
+APP_CONTROL_PRIVS = {"pipeline_jobs": "SELECT", "worker_heartbeats": "SELECT",
+                     # Evolução, item 7 — referência de mercado (carregada pelo dono do schema)
+                     "benchmarks_mercado": "SELECT"}
 
 
 def data_plane_tables() -> list[str]:

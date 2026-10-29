@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { BenchmarkCard } from "@/components/BenchmarkCard";
 import { CausasPanel } from "@/components/CausasPanel";
+import { CompletudeBanner } from "@/components/CompletudeBanner";
 import { CompositionCard } from "@/components/CompositionCard";
 import { InvestigacaoPanel } from "@/components/InvestigacaoPanel";
 import { ReceitaCard } from "@/components/ReceitaCard";
@@ -75,6 +77,7 @@ export default function SinistralidadePage() {
 
   return (
     <div className="space-y-5">
+      <CompletudeBanner />
       {/* escopo de contrato (v1.2) */}
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-slate-500">Escopo:</span>
@@ -126,6 +129,8 @@ export default function SinistralidadePage() {
       {!emContrato && <CompositionCard />}
 
       {!emContrato && <ReceitaCard />}
+
+      {!emContrato && <BenchmarkCard />}
 
       {ind.data?.decomposicao_receita_despesa && (
         <Card title="A variação (líquida) veio de despesa ou de receita?">

@@ -21,6 +21,7 @@ Um usuário pode ter papéis diferentes em tenants diferentes (um vínculo por t
 | `analytics:read` — módulos analíticos (sujeito a features) | ✓ | ✓ | ✓ | ✓ |
 | `alert_rules:read` — ver regras de alerta | ✓ | ✓ | ✓ | ✓ |
 | `alert_rules:write` — criar/editar/excluir regras | | ✓ | ✓ | ✓ |
+| `action_plans:write` — criar/editar planos de ação | | ✓ | ✓ | ✓ |
 | `tenant_users:read` — listar usuários do tenant | | | ✓ | ✓ |
 | `tenant_users:manage` — adicionar, papel, status, reset (contas exclusivas) | | | ✓ | ✓ |
 | `tenant_branding:manage` — identidade visual (exige feature `custom_branding`) | | | ✓ | ✓ |

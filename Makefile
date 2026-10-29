@@ -47,10 +47,10 @@ migrate:
 	$(COMPOSE) exec backend alembic upgrade head
 
 seed:
-	$(COMPOSE) exec backend python -m app.seed.run --beneficiarios 20000
+	$(COMPOSE) exec backend python -m app.seed.run --beneficiarios 20000 --carga-parcial
 
 seed-full:
-	$(COMPOSE) exec backend python -m app.seed.run --beneficiarios 100000
+	$(COMPOSE) exec backend python -m app.seed.run --beneficiarios 100000 --carga-parcial
 
 seed-tenant-b:
 	$(COMPOSE) exec backend python -m app.seed.run --tenant w2h-demo-b --tenant-name "Operadora Horizonte" --beneficiarios 5000 --seed 7

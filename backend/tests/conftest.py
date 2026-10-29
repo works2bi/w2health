@@ -388,3 +388,34 @@ def upload_and_wait(sa, tenant: str, source_id: int, files: dict[str, bytes]) ->
             "reconciliation": d["reconciliation_status"], "message": erro or "carga publicada",
             "job": d.get("job")}
 
+
+
+# --------------------------------------------------------------------------------------
+# Evolução do produto — clientes por papel no tenant demo (planos de ação, alertas, benchmark)
+# --------------------------------------------------------------------------------------
+def _cliente_papel(maker, email: str) -> TestClient:
+    from app.db.session import get_db
+
+    app = create_app()
+
+    def _get_db():
+        s: Session = maker()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_db] = _get_db
+    with maker() as s:
+        tok = token_for(s, email, DEFAULT_TENANT)
+    return TestClient(app, headers={"Authorization": f"Bearer {tok}"})
+
+
+@pytest.fixture
+def gestor(seeded_sessionmaker) -> TestClient:
+    return _cliente_papel(seeded_sessionmaker, "manager@test.example")
+
+
+@pytest.fixture
+def leitor(seeded_sessionmaker) -> TestClient:
+    return _cliente_papel(seeded_sessionmaker, "viewer@test.example")

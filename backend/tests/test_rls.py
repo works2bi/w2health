@@ -41,14 +41,17 @@ def test_lista_de_tabelas_da_migration_bate_com_metadata():
                                          "NEW_DATA_PLANE_TABLES")
     consolidacao = _tuple_from_migration("e1f2a3b4c5d6_consolidacao_canonico_financeiro.py",
                                          "NEW_DATA_PLANE_TABLES")
+    evolucao = _tuple_from_migration("a9b8c7d6e5f4_evolucao_gestao_da_acao.py", "NEW_DATA_PLANE_TABLES")
     renomeadas = {"receitas_contrato"}  # → receitas_reconhecidas (está em `consolidacao`)
-    assert (fase1 - renomeadas) | fase2 | n_para_n | investigacao | consolidacao == esperado
+    assert (fase1 - renomeadas) | fase2 | n_para_n | investigacao | consolidacao | evolucao == esperado
     assert _tuple_from_migration("c7a1e2b3d4f5_v1_saas_control_plane.py", "DATA_PLANE_TABLES") == fase1
     controle_fase1 = _tuple_from_migration("e8b9c0d1f2a3_v1_saas_rls_e_papel_de_runtime.py",
                                            "CONTROL_PLANE_TABLES")
     novas_controle = {"tenant_onboarding", "user_recovery_codes", "auth_rate_limits",
                       # Fase 3 — fila e presença do worker (migration b8e9f0a1c2d3)
-                      "pipeline_jobs", "worker_heartbeats"}
+                      "pipeline_jobs", "worker_heartbeats",
+                      # Evolução — referência de mercado (migration a9b8c7d6e5f4)
+                      "benchmarks_mercado"}
     assert controle_fase1 | novas_controle == set(rls.control_plane_tables())
 
 

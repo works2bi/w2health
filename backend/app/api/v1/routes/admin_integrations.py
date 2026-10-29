@@ -10,7 +10,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, func, select
@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.data_platform import connections as conn_svc
-from app.data_platform import lineage, onboarding, readiness
+from app.data_platform import lineage, onboarding, padroes_ans, readiness
 from app.data_platform.context import PipelineError
 from app.data_platform.mapping import MappingError
 from app.data_platform.runner import FileLimits, FileValidationError, receive_package
@@ -249,6 +249,88 @@ async def upload(tenant_id: str, source_id: int, request: Request, response: Res
     if r.status != "QUEUED":
         response.status_code = 200
     return r.as_dict()
+
+
+_XML_MIME = {"text/xml", "application/xml", "application/octet-stream", ""}
+
+
+async def _ler_xmls(arquivos: list[UploadFile], limite: int) -> dict[str, bytes]:
+    out: dict[str, bytes] = {}
+    for f in arquivos:
+        if (f.content_type or "").split(";")[0].strip().lower() not in _XML_MIME:
+            raise ApiError("invalid_request", f"{f.filename}: envie XML")
+        data = await f.read(limite + 1)
+        if len(data) > limite:
+            raise ApiError("invalid_request", f"{f.filename}: arquivo maior que o limite")
+        out[(f.filename or f"arquivo{len(out)}.xml")[:200]] = data
+    return out
+
+
+@router.post("/tenants/{tenant_id}/sources/{source_id}/padroes-ans",
+             summary="Converte TISS (guias) + SIB (beneficiários) no pacote canônico; com "
+                     "processar=true, enfileira a carga pela fonte (mapping ans_padroes)")
+async def padroes_ans_converter(
+    tenant_id: str, source_id: int, response: Response,
+    tiss: list[UploadFile] = File(...), sib: list[UploadFile] = File(...),
+    processar: bool = Form(False),
+    uf_padrao: str | None = Form(None, min_length=2, max_length=2),
+    p: Principal = Depends(_INTEG), db: Session = Depends(get_db),
+) -> dict:
+    cfg = get_settings()
+    limite = cfg.upload_max_file_mb * 1024 * 1024
+    with tenant_session(db, tenant_id) as s:  # fonte é data plane (RLS do tenant do caminho)
+        fonte = s.get(SourceConnection, source_id)
+        config = dict(fonte.configuration or {}) if fonte is not None else None
+    if config is None:
+        raise ApiError("not_found", "Fonte não encontrada.")
+    if config.get("mapping_id") != padroes_ans.MAPPING_ID:
+        raise ApiError("invalid_request", "A fonte precisa usar o mapping 'ans_padroes' (versão 1).")
+    try:
+        arquivos, relatorio = await run_in_threadpool(
+            padroes_ans.converter, await _ler_xmls(tiss, limite), await _ler_xmls(sib, limite), uf_padrao)
+    except padroes_ans.PadraoANSError as e:
+        raise ApiError("invalid_request", str(e)[:300]) from e
+    audit.add(db, "integration.ans_converted", actor=p.actor(), tenant_id=tenant_id,
+              entity_type="source_connection", entity_id=source_id,
+              details={"contagens": relatorio["contagens"], "processar": processar})
+    db.commit()
+    if not processar:
+        return {"relatorio": relatorio, "carga": None}
+    if relatorio["prestadores_sem_uf"]:
+        raise ApiError("invalid_request", f"{relatorio['prestadores_sem_uf']} prestador(es) sem UF — "
+                                          "informe a UF padrão da rede (uf_padrao).")
+    if not _limitador_upload().hit(f"upload:user:{p.user_id}"):
+        raise ApiError("rate_limited", "Limite de cargas por hora atingido. Tente mais tarde.")
+    try:
+        r = await run_in_threadpool(receive_package, tenant_id=tenant_id, source_connection_id=source_id,
+                                    files=arquivos, triggered_by=p.email, max_bytes=limite,
+                                    max_files=cfg.upload_max_files, limits=FileLimits.from_settings())
+    except PipelineDatabaseNotConfigured as e:
+        raise ApiError("service_unavailable", "Execução de pipeline não configurada neste ambiente.") from e
+    except StorageUnavailable as e:
+        raise ApiError("service_unavailable", "Armazenamento indisponível — tente novamente.") from e
+    except (PipelineError, MappingError, FileValidationError) as e:
+        raise ApiError("invalid_request", str(e)[:300]) from e
+    response.status_code = 202 if r.status == "QUEUED" else 200
+    return {"relatorio": relatorio, "carga": r.as_dict()}
+
+
+@router.post("/tenants/{tenant_id}/diops-conferencia",
+             summary="Confere o balancete DIOPS do trimestre (contas 311 e 411) com a camada analítica")
+async def diops_conferencia(
+    tenant_id: str, arquivo: UploadFile = File(...),
+    ano: int = Form(..., ge=2000, le=2100), trimestre: int = Form(..., ge=1, le=4),
+    tolerancia_pct: float = Form(1.0, ge=0, le=100),
+    _p: Principal = Depends(_INTEG), db: Session = Depends(get_db),
+) -> dict:
+    dados = await arquivo.read(5 * 1024 * 1024 + 1)
+    if len(dados) > 5 * 1024 * 1024:
+        raise ApiError("invalid_request", "balancete maior que 5 MB")
+    with tenant_session(db, tenant_id) as s:
+        try:
+            return padroes_ans.conferir_diops(s, dados, ano, trimestre, tolerancia_pct)
+        except padroes_ans.PadraoANSError as e:
+            raise ApiError("invalid_request", str(e)[:300]) from e
 
 
 # ============================================================================ jobs (operação)

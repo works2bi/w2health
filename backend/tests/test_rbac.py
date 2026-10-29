@@ -21,7 +21,7 @@ def test_matriz_de_permissoes_e_a_documentada():
     m = {p.value for p in TENANT_ROLE_PERMISSIONS[Role.MANAGER]}
     a = {p.value for p in TENANT_ROLE_PERMISSIONS[Role.TENANT_ADMIN]}
     assert v == {"analytics:read", "alert_rules:read"}
-    assert m == v | {"alert_rules:write"}
+    assert m == v | {"alert_rules:write", "action_plans:write"}
     assert a == m | {"tenant_users:read", "tenant_users:manage", "tenant_branding:manage",
                      "tenant_settings:read", "tenant_settings:manage", "tenant_audit:read"}
     # nenhum papel de tenant recebe permissão de plataforma

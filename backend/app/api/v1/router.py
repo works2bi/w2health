@@ -14,6 +14,8 @@ from app.api.v1.routes import (
     health,
     insights,
     investigacao,
+    notificacoes,
+    planos_acao,
     prestadores,
     procedimentos,
     public,
@@ -39,4 +41,6 @@ api_v1_router.include_router(empresas.router)
 api_v1_router.include_router(receitas.router)
 api_v1_router.include_router(insights.router)
 api_v1_router.include_router(investigacao.router)
+api_v1_router.include_router(planos_acao.router)
+api_v1_router.include_router(notificacoes.router)
 api_v1_router.include_router(config.router)

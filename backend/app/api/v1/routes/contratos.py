@@ -5,10 +5,11 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.analytics import contratos as ctr
+from app.analytics import reajuste
 from app.api.v1.routes._common import analytics_guard, comparacao_dep, competencia_dep
 from app.saas import audit
 from app.saas.feature_filters import BENEFICIARY, filter_alertas, sanitize
@@ -53,3 +54,26 @@ def detalhe(
         res["alertas"] = []
         res["restricoes_plano"] = sorted({*res.get("restricoes_plano", []), "alerts"})
     return res
+
+
+@router.get("/{id_contrato}/simulacao-reajuste",
+            summary="Simulador de reajuste: meta de sinistralidade × VCMH → reajuste técnico")
+def simulacao_reajuste(
+    id_contrato: int,
+    meta: float = Query(75.0, description="Meta de sinistralidade (%)"),
+    vcmh: float = Query(10.0, description="Variação do custo médico-hospitalar projetada (%)"),
+    meses: int = Query(12, ge=3, le=24, description="Meses de histórico na base"),
+    ajustar_completude: bool = Query(True, description="Completa meses preliminares com o IBNR"),
+    receita_mensal: float | None = Query(None, gt=0, description="Receita mensal informada "
+                                         "(só quando o contrato não tem receita atribuída)"),
+    competencia: date = Depends(competencia_dep),
+    db: Session = Depends(get_tenant_db),
+) -> dict:
+    try:
+        return reajuste.simular(db, id_contrato, competencia, meta=meta, vcmh=vcmh, meses=meses,
+                                ajustar_completude=ajustar_completude,
+                                receita_informada=receita_mensal)
+    except LookupError as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e

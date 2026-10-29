@@ -143,6 +143,11 @@ export async function apiUploadFiles<T = unknown>(path: string, files: File[]): 
   return request<T>(path, { method: "POST", body: fd });
 }
 
+/** POST multipart com um FormData montado pelo chamador (padrões ANS, DIOPS). */
+export async function apiForm<T = unknown>(path: string, fd: FormData): Promise<T> {
+  return request<T>(path, { method: "POST", body: fd });
+}
+
 export const qs = (params: Record<string, string | number | null | undefined>): string => {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v != null && v !== "") p.set(k, String(v));

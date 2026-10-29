@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { MiniSeries } from "@/components/charts";
 import { InvestigacaoPanel } from "@/components/InvestigacaoPanel";
+import { SimuladorReajuste } from "@/components/SimuladorReajuste";
 import { Card, DataState, EfeitoBadge, Stat } from "@/components/ui";
 import type { SinistralidadeContratual } from "@/lib/api";
 import { filtersQuery, useFilters } from "@/lib/filters";
@@ -221,6 +222,7 @@ export default function ContratoDetalhePage() {
                 </ul>
               </Card>
             )}
+            {id && <SimuladorReajuste contratoId={id} />}
           </>
         )}
       </DataState>

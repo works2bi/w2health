@@ -31,7 +31,10 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/prestadores", label: "Prestadores", feature: "provider_intelligence", permission: "analytics:read", tenant: true },
       { href: "/beneficiarios", label: "Beneficiários", feature: "beneficiary_intelligence", permission: "analytics:read", tenant: true },
       { href: "/insights", label: "Insights & Alertas", feature: "insights", permission: "analytics:read", tenant: true },
+      { href: "/planos-acao", label: "Planos de Ação", feature: "insights", permission: "analytics:read", tenant: true },
+      { href: "/relatorio", label: "Relatório Mensal", feature: "executive_overview", permission: "analytics:read", tenant: true },
       { href: "/configuracao/insights", label: "Regras de alerta", feature: "alerts", permission: "alert_rules:read", tenant: true },
+      { href: "/configuracao/alertas-email", label: "Alertas por E-mail", feature: "alerts", permission: "analytics:read", tenant: true },
     ],
   },
   {
@@ -89,6 +92,8 @@ const ROTULOS_SEGMENTO: Record<string, string> = {
   features: "Features",
   tenants: "Tenants",
   integracoes: "Integrações",
+  "alertas-email": "Alertas por E-mail",
+  "planos-acao": "Planos de Ação",
 };
 
 /** Rótulo legível para um segmento de rota (usado nos breadcrumbs). */

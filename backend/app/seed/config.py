@@ -25,6 +25,10 @@ class SeedConfig:
     # Sinistralidade média-alvo do baseline (primeiros meses), usada para calibrar a receita.
     sinistralidade_alvo: float = 0.75
     aplicar_cenarios: bool = True
+    # Evolução, item 1 — simula a carga real: as contas da ÚLTIMA competência apresentadas
+    # depois do corte (fim) ficam fora. Muda os números de dez/2026 (e o cenário S13); por
+    # isso é opção da demo (`make seed`), não da suíte de testes.
+    carga_parcial: bool = False
 
     # Lote para inserts em massa.
     chunk: int = field(default=10_000, compare=False)

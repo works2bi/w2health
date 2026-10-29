@@ -16,7 +16,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.analytics import cohorts, decomposition
+from app.analytics import benchmark, cohorts, decomposition
 from app.analytics import sinistralidade as sin
 from app.api.v1.routes._common import (
     analytics_guard,
@@ -50,6 +50,18 @@ def indicador(
     db: Session = Depends(get_tenant_db),
 ) -> dict:
     return sin.indicador(db, competencia, comparacao)
+
+
+@router.get("/benchmark", summary="Operadora × mercado (dados abertos ANS): sinistralidade e custo por vida")
+def benchmark_mercado(
+    segmento: str = Query("medicina_de_grupo", description="Modalidade de comparação"),
+    competencia: date = Depends(competencia_dep),
+    db: Session = Depends(get_tenant_db),
+) -> dict:
+    try:
+        return benchmark.comparar(db, competencia, segmento)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
 
 
 @router.get("/evolucao", summary="Série mensal com sinistralidade, acumulado 12m e variações")
